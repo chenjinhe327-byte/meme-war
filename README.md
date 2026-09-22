@@ -250,18 +250,40 @@ Verified against the live contract, not just locally:
   tolerance, 500 bps cross-source agreement, $25,000 liquidity floor.
 - `preview_sample("$0.00012345")` returns `123450000000000`, so the integer
   parser behaves on chain exactly as it does in the suite.
-- A war on BRETT was opened and matched, **which exercised the oracle for real**:
-  the contract read DexScreener and GeckoTerminal on-chain, the two providers
-  agreed, and validators locked an entry price of `0.00580086753` with
-  `$1,219,802` of observed liquidity.
+- **A full round trip completed on chain.** A BRETT war was opened, matched
+  (the contract read both providers on chain and locked an entry price of
+  `0.00580086753` with `$1,219,802` of observed liquidity), settled after the 1h
+  window at `0.005774663406`, and the winning side withdrew the pot.
+
+  | Step | Transaction |
+  | --- | --- |
+  | Deploy | `0x69b3197e600b7ccd67aae7d4683d16452f8bc572c5ff8a3ea132cf2db4b476c9` |
+  | Match — oracle reads entry | `0x4555b693a4819052964bf2dcf4c8ee934c189dd6a104bb2808308ed9c95b730e` |
+  | Settle — oracle reads exit | `0x0b8e252964fa6e13db9a893950571480c244119cf45946cc01fc95c42ffe6021` |
+  | Winner claims the pot | `0xd1169d4d1020faafaeefbc2ca4d6dda47e0b02abaf21fb5f8b088d5d30a10bda` |
 
 Remaining:
 
 - The frontend has **not** been run against the deployed contract (no browser
   available where this was built). Its first testnet run is its smoke test.
-- Settlement of the live war needs the 1h window to pass; `tools/settle.py` is
-  the keeper that pushes it.
 - `tests/integration/` needs `MEMEWAR_LIVE=1` and spends testnet funds.
+
+## Notes on this network
+
+Two things about GenLayer testnets cost real time here; both are handled in
+`tools/net.py` so they do not cost you any:
+
+- **Connections are unreliable.** TLS connections to `rpc-bradbury` get reset
+  from some networks, and the RPC sits behind Cloudflare, which rejects Python's
+  default `python-requests/*` User-Agent with a 403 challenge. Transient
+  failures are retried, and every transaction hash is printed the moment the node
+  returns it — a receipt poll that dies must not lose a deployment that already
+  landed. If reads fail outright, route through a proxy via `HTTPS_PROXY`.
+- **A single transaction is capped at 2^24 gas**, and the contract source *is*
+  the deploy calldata, so a well-documented 25 KB contract estimates to ~20.7M
+  gas and is rejected. `tools/minify.py` strips comments and docstrings at deploy
+  time (18.0 KB, ~14.9M gas) by deleting lines rather than rewriting code, so
+  what ships is byte-for-byte the code that was tested.
 
 ## Roadmap
 

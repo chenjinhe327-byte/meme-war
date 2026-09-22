@@ -1,7 +1,7 @@
 # Submission — GenLayer Portal, **Projects**
 
-> Copy the fields below into the contribution form. Fill the two `<…>`
-> placeholders after you deploy, and attach the links listed under *Showcase*.
+> Copy the fields below into the contribution form. The Showcase links and the
+> evidence table are already filled in from the live Bradbury deployment.
 
 ---
 
@@ -15,23 +15,36 @@ Meme War — trustless PvP settlement for assets that have no oracle
 
 | Type | Value |
 | --- | --- |
-| Other | `https://github.com/chenjinhe327-byte/meme-war` *(push this repo first)* |
+| Other | `https://github.com/chenjinhe327-byte/meme-war` |
 | Other | `https://explorer-bradbury.genlayer.com/address/0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f` |
-| Other | `<explorer link to the resolve_war tx once the war settles>` |
+| Other | `https://explorer-bradbury.genlayer.com/tx/0x0b8e252964fa6e13db9a893950571480c244119cf45946cc01fc95c42ffe6021` |
 
-Deployed and exercised on GenLayer Bradbury (chain 4221):
+## The full round trip, on chain
 
-| | |
+Contract `0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f` on GenLayer Bradbury
+(chain 4221). Every row is a real transaction; nothing here was simulated.
+
+| Step | Transaction |
 | --- | --- |
-| Contract | `0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f` |
-| Deploy tx | `0x69b3197e600b7ccd67aae7d4683d16452f8bc572c5ff8a3ea132cf2db4b476c9` |
-| Match tx | `0x4555b693a4819052964bf2dcf4c8ee934c189dd6a104bb2808308ed9c95b730e` |
-| War | `0xb1065e9d0adb2bd0295940164ecc533bbdcaf6609b9273f08ba44f1e3a93b0bb` |
+| Deploy | `0x69b3197e600b7ccd67aae7d4683d16452f8bc572c5ff8a3ea132cf2db4b476c9` |
+| Open a war — creator stakes 0.01 GEN on BRETT going UP, 1h | war `0xb1065e9d0adb2bd0295940164ecc533bbdcaf6609b9273f08ba44f1e3a93b0bb` |
+| Match it — opponent stakes 0.01 GEN, **oracle reads the entry price** | `0x4555b693a4819052964bf2dcf4c8ee934c189dd6a104bb2808308ed9c95b730e` |
+| Settle after expiry — **oracle reads the exit price** | `0x0b8e252964fa6e13db9a893950571480c244119cf45946cc01fc95c42ffe6021` |
+| Winner withdraws the pot | `0xd1169d4d1020faafaeefbc2ca4d6dda47e0b02abaf21fb5f8b088d5d30a10bda` |
 
-The matched war is the load-bearing evidence: `entry_price = 0.00580086753` and
-`entry_liquidity = $1,219,802` were produced **on chain**, by the contract reading
-two independent providers and validators agreeing on the number within 200 bps.
-That is the part no local test can prove.
+What the contract observed and stored, on chain:
+
+```
+entry_price      0.00580086753      entry_liquidity  $1,219,802
+exit_price       0.005774663406     move             -0.45%
+winner           DOWN               pot              0.02 GEN
+final claimable  0 (the winner drained it)   total_wars 1, total_settled 1
+```
+
+`entry_price` and `exit_price` were produced **by the contract**, reading
+DexScreener and GeckoTerminal inside a GenLayer validator set and agreeing on the
+number within 200 bps. That is the claim no local test can make, and it is the
+whole reason the project exists.
 
 ## Notes / description
 

@@ -92,41 +92,52 @@ def main(argv=None) -> int:
     if war["status"] == "OPEN":
         print("  not matched yet - nothing to settle", file=sys.stderr)
         return 2
-    if war["status"] not in ("MATCHED",):
-        print(f"  already closed as {war['status']} (winner {war['winner'] or '-'})")
-        return 0
 
-    now = client.w3.eth.get_block("latest")["timestamp"]
-    target = int(war["resolve_at"]) + args.margin
+    settled = war
+    if war["status"] == "MATCHED":
+        now = client.w3.eth.get_block("latest")["timestamp"]
+        target = int(war["resolve_at"]) + args.margin
 
-    if now < target:
-        remaining = target - now
-        if not args.wait:
-            print(
-                f"  expires in {remaining}s; re-run with --wait to sit it out",
-                file=sys.stderr,
-            )
-            return 2
-        print(f"  waiting {remaining}s for expiry...", flush=True)
-        time.sleep(remaining)
+        if now < target:
+            remaining = target - now
+            if not args.wait:
+                print(
+                    f"  expires in {remaining}s; re-run with --wait to sit it out",
+                    file=sys.stderr,
+                )
+                return 2
+            print(f"  waiting {remaining}s for expiry...", flush=True)
+            time.sleep(remaining)
 
-    tx = client.write_contract(address=address, function_name="resolve_war", args=[args.war])
-    print(f"  resolve tx {tx}")
-
-    receipt = client.wait_for_transaction_receipt(
-        transaction_hash=tx, status=status.ACCEPTED
-    )
-    settled = client.read_contract(address=address, function_name="get_war", args=[args.war])
-
-    print(f"  status {settled['status']}  winner {settled['winner'] or '-'}")
-    if settled["exit_price"]:
-        ratio = settled["exit_price"] / (settled["entry_price"] or 1)
-        print(
-            f"  entry {settled['entry_price'] / ONE_GEN:.10g} -> "
-            f"exit {settled['exit_price'] / ONE_GEN:.10g}  ({ratio - 1:+.2%})"
+        tx = client.write_contract(
+            address=address, function_name="resolve_war", args=[args.war]
         )
-    if settled["status"] == "VOID":
-        print("  voided: stakes refunded to both sides")
+        print(f"  resolve tx {tx}")
+
+        client.wait_for_transaction_receipt(transaction_hash=tx, status=status.ACCEPTED)
+        settled = client.read_contract(
+            address=address, function_name="get_war", args=[args.war]
+        )
+
+        print(f"  status {settled['status']}  winner {settled['winner'] or '-'}")
+        if settled["exit_price"]:
+            ratio = settled["exit_price"] / (settled["entry_price"] or 1)
+            print(
+                f"  entry {settled['entry_price'] / ONE_GEN:.10g} -> "
+                f"exit {settled['exit_price'] / ONE_GEN:.10g}  ({ratio - 1:+.2%})"
+            )
+        if settled["status"] == "VOID":
+            print("  voided: stakes refunded to both sides")
+    else:
+        # Someone else already resolved it. Claiming must still work: the winner
+        # is a different account, and it is settled wars that need claiming.
+        print(f"  already settled as {war['status']} (winner {war['winner'] or '-'})")
+        if war["exit_price"] and war["entry_price"]:
+            ratio = war["exit_price"] / war["entry_price"]
+            print(
+                f"  entry {war['entry_price'] / ONE_GEN:.10g} -> "
+                f"exit {war['exit_price'] / ONE_GEN:.10g}  ({ratio - 1:+.2%})"
+            )
 
     if args.claim:
         claimable = int(
