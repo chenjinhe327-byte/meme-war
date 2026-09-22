@@ -138,7 +138,7 @@ def main() -> int:
 
     receipt = client.wait_for_transaction_receipt(
         transaction_hash=tx_hash,
-        status=TransactionStatus.FINALIZED,
+        status=TransactionStatus.ACCEPTED,
         full_transaction=True,
     )
 

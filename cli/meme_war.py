@@ -102,9 +102,16 @@ def _stake_to_wei(text: str) -> int:
 
 
 def _finish(client, tx_hash, as_json: bool):
+    """Wait for ACCEPTED, not FINALIZED.
+
+    ACCEPTED already means validators agreed and the state change is real. On
+    this network FINALIZED can take longer than any sensible client timeout, so
+    waiting for it makes every write look like a failure when it succeeded - the
+    exact trap that made `open` exit non-zero after the war had been created.
+    """
     receipt = client.wait_for_transaction_receipt(
         transaction_hash=tx_hash,
-        status=TransactionStatus.FINALIZED,
+        status=TransactionStatus.ACCEPTED,
     )
     if as_json:
         print(json.dumps({"tx": str(tx_hash), "receipt": receipt}, indent=2, default=str))
