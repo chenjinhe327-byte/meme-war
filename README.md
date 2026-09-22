@@ -116,6 +116,28 @@ Highlights:
 - `test_stake_is_always_parsed_as_gen` — `--stake 1` is one GEN. It used to be
   one wei, which the CLI's own tests caught before anyone lost money to it.
 
+### Which network should I use?
+
+| Network | Chain ID | How you get GEN | Use it for |
+| --- | --- | --- | --- |
+| **Bradbury** | 4221 | [public faucet](https://testnet-faucet.genlayer.foundation) — funds any address | **The submitted demo.** Docs call it the production-like testnet with real AI/LLM workloads, and it has a public explorer |
+| Asimov | 4221 | same public faucet | Infrastructure and stress testing |
+| [Studionet](https://studio.genlayer.com) | 61999 | built-in 💧 button in the Studio account selector | Interactive poking in the browser |
+| Localnet | 61127 | `client.fund_account(...)` | Fully local runs |
+
+Two things that are easy to get wrong:
+
+- **`genlayer-py` cannot fund an account on a testnet.** `fund_account()` raises
+  unless the chain is localnet, so the money has to come from a faucet.
+- **The Studionet faucet is a button in the Studio UI, not a public URL.** That
+  is fine if your key is imported into Studio, but it is why the deploy script
+  below targets Bradbury — a public faucet can fund a key that only exists in
+  your terminal.
+
+Read-only calls (`get_config`, `get_sources`, `preview_sample`) cost nothing and
+work on any network, so they are the cheapest way to confirm the oracle's
+numeric behaviour before spending anything.
+
 ### Deploy
 
 Get testnet GEN from <https://testnet-faucet.genlayer.foundation>, then:
