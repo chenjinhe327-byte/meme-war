@@ -37,15 +37,28 @@ NETWORKS = {
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOYMENT = ROOT / "deploy" / "deployment.json"
+ENV_FILE = ROOT / ".env"
 
 ONE_GEN = 10 ** 18
 
 
+def _load_env() -> None:
+    """Read .env so the private key never has to be exported by hand."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv(ENV_FILE, override=False)
+
+
 def _client():
+    _load_env()
     private_key = os.environ.get("GENLAYER_PRIVATE_KEY")
     if not private_key:
-        raise SystemExit("GENLAYER_PRIVATE_KEY is not set")
-    network = os.environ.get("GENLAYER_NETWORK", "studionet")
+        raise SystemExit(
+            "GENLAYER_PRIVATE_KEY is not set. Run `python tools/new_wallet.py` first."
+        )
+    network = os.environ.get("GENLAYER_NETWORK", "bradbury")
     chain = NETWORKS.get(network)
     if chain is None:
         raise SystemExit(f"unknown network {network!r}")

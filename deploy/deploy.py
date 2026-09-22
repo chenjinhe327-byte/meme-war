@@ -1,9 +1,12 @@
 """Deploy MemeWar to a GenLayer network.
 
-Usage::
+Credentials come from ``deploy/.env`` (git-ignored) or the environment, so the
+private key never has to be pasted onto a command line or into a chat::
 
-    export GENLAYER_PRIVATE_KEY=0x...
-    export GENLAYER_NETWORK=studionet        # studionet | asimov | localnet
+    # writes .env and prints only the address
+    python tools/new_wallet.py
+
+    # fund that address at https://testnet-faucet.genlayer.foundation
     python deploy/deploy.py
 
 The deployed address is printed and written to ``deploy/deployment.json`` so the
@@ -20,6 +23,20 @@ from pathlib import Path
 from genlayer_py import create_account, create_client
 from genlayer_py.chains import localnet, studionet, testnet_asimov, testnet_bradbury
 from genlayer_py.types import TransactionStatus
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "contracts" / "meme_war.py"
+OUT = ROOT / "deploy" / "deployment.json"
+ENV_FILE = ROOT / ".env"
+
+
+def load_env() -> None:
+    """Read .env without overwriting anything already exported."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv(ENV_FILE, override=False)
 
 NETWORKS = {
     "localnet": localnet,
@@ -38,12 +55,18 @@ OUT = ROOT / "deploy" / "deployment.json"
 
 
 def main() -> int:
+    load_env()
+
     private_key = os.environ.get("GENLAYER_PRIVATE_KEY")
     if not private_key:
-        print("GENLAYER_PRIVATE_KEY is not set", file=sys.stderr)
+        print(
+            "GENLAYER_PRIVATE_KEY is not set. Run `python tools/new_wallet.py` "
+            "to create .env, then fund the address it prints.",
+            file=sys.stderr,
+        )
         return 2
 
-    network = os.environ.get("GENLAYER_NETWORK", "studionet")
+    network = os.environ.get("GENLAYER_NETWORK", "bradbury")
     chain = NETWORKS.get(network)
     if chain is None:
         print(f"unknown network {network!r}; expected one of {sorted(NETWORKS)}", file=sys.stderr)
