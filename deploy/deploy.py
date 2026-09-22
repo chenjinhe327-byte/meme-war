@@ -27,7 +27,51 @@ from genlayer_py.types import TransactionStatus
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts" / "meme_war.py"
 OUT = ROOT / "deploy" / "deployment.json"
+RECEIPT_OUT = ROOT / "deploy" / "last_receipt.json"
 ENV_FILE = ROOT / ".env"
+
+_HEX_ADDRESS_KEYS = ("contract_address", "recipient", "to_address", "to", "address")
+
+
+def find_contract_address(receipt, sender=None, ignore=None):
+    """Pull the new contract's address out of a deploy receipt.
+
+    The exact nesting is not worth guessing at: `recipient` is documented as the
+    deployed address for a deploy, but the RPC sometimes omits the fields that
+    make that unambiguous (`tx_data_decoded` came back null on the first
+    successful deploy here). So walk the whole structure and take the first
+    address-shaped value under an address-shaped key that is neither the sender
+    nor the consensus contract.
+    """
+    skip = set()
+    for value in (sender, ignore):
+        if isinstance(value, str) and value:
+            skip.add(value.lower())
+
+    def looks_like_address(value):
+        return (
+            isinstance(value, str)
+            and value.startswith("0x")
+            and len(value) == 42
+            and all(c in "0123456789abcdefABCDEF" for c in value[2:])
+        )
+
+    found = []
+
+    def walk(node, key_hint=None):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if isinstance(value, str) and looks_like_address(value):
+                    if str(key).lower() in _HEX_ADDRESS_KEYS and value.lower() not in skip:
+                        found.append(value)
+                else:
+                    walk(value, str(key))
+        elif isinstance(node, list):
+            for item in node:
+                walk(item, key_hint)
+
+    walk(receipt)
+    return found[0] if found else None
 
 
 def load_env() -> None:
@@ -57,6 +101,12 @@ OUT = ROOT / "deploy" / "deployment.json"
 def main() -> int:
     load_env()
 
+    sys.path.insert(0, str(ROOT))
+    from tools.minify import shrink
+    from tools.net import install_all
+
+    install_all()
+
     private_key = os.environ.get("GENLAYER_PRIVATE_KEY")
     if not private_key:
         print(
@@ -73,6 +123,12 @@ def main() -> int:
         return 2
 
     code = CONTRACT.read_text(encoding="utf-8")
+    if os.environ.get("MEMEWAR_NO_MINIFY") != "1":
+        code, before, after, gas = shrink(code)
+        print(
+            f"source {before} B -> {after} B (comments and docstrings stripped); "
+            f"estimated deploy gas ~{gas:,}"
+        )
     account = create_account(account_private_key=private_key)
     client = create_client(chain=chain, account=account)
     print(f"deploying to {network} as {account.address}")
@@ -86,12 +142,23 @@ def main() -> int:
         full_transaction=True,
     )
 
-    address = None
-    if isinstance(receipt, dict):
-        address = receipt.get("recipient") or receipt.get("to") or receipt.get("contract_address")
+    # Always keep the raw receipt: when address extraction goes wrong, the
+    # receipt is the only record of what actually happened on chain.
+    RECEIPT_OUT.write_text(
+        json.dumps(receipt, indent=2, default=str) + "\n", encoding="utf-8"
+    )
+
+    address = find_contract_address(
+        receipt, sender=account.address, ignore=(chain.consensus_main_contract or {}).get("address")
+    )
     if not address:
-        print("deploy finished but no address was found in the receipt:", file=sys.stderr)
-        print(json.dumps(receipt, default=str)[:2000], file=sys.stderr)
+        print(
+            "deploy finished but no contract address was found in the receipt.",
+            file=sys.stderr,
+        )
+        print(f"raw receipt written to {RECEIPT_OUT}", file=sys.stderr)
+        top = sorted(receipt.keys()) if isinstance(receipt, dict) else type(receipt).__name__
+        print(f"top-level receipt keys: {top}", file=sys.stderr)
         return 1
 
     OUT.write_text(

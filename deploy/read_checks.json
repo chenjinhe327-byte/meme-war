@@ -1,0 +1,41 @@
+{
+  "get_config": {
+    "chains": [
+      "ethereum",
+      "base",
+      "bsc",
+      "arbitrum",
+      "polygon",
+      "solana",
+      "avax"
+    ],
+    "match_window_seconds": 21600,
+    "max_attempts": 3,
+    "min_liquidity_usd": 25000,
+    "price_decimals": 18,
+    "source_agreement_bps": 500,
+    "timeframes": [
+      "1h",
+      "24h",
+      "7d"
+    ],
+    "total_settled": 0,
+    "total_wars": 0,
+    "validator_tolerance_bps": 200
+  },
+  "get_sources": [
+    {
+      "provider": "dexscreener",
+      "url": "https://api.dexscreener.com/latest/dex/tokens/0x532f27101965dd16442E59d40670FaF5eBB142E4"
+    },
+    {
+      "provider": "geckoterminal",
+      "url": "https://api.geckoterminal.com/api/v2/networks/base/tokens/0x532f27101965dd16442E59d40670FaF5eBB142E4"
+    }
+  ],
+  "preview_sample": {
+    "price_scaled": 123450000000000,
+    "raw": "$0.00012345",
+    "usd_scaled": 123
+  }
+}

@@ -53,6 +53,11 @@ def _load_env() -> None:
 
 def _client():
     _load_env()
+    sys.path.insert(0, str(ROOT))
+    from tools.net import install_all
+
+    install_all()
+
     private_key = os.environ.get("GENLAYER_PRIVATE_KEY")
     if not private_key:
         raise SystemExit(
