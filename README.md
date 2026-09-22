@@ -230,13 +230,32 @@ immediately.
 
 ## Status
 
-- Contract, CLI, deploy script and the 88-test suite (65 contract + 23 CLI) are
-  working.
-- The frontend is a complete client but has **not** been executed against a
-  deployed contract from this environment (no browser and no testnet access
-  here) — treat the first testnet run as its smoke test.
-- `tests/integration/` runs against Studio/testnet and is skipped unless
-  `MEMEWAR_LIVE=1`, because it spends testnet funds.
+**Live on GenLayer Bradbury testnet** (chain 4221):
+
+| | |
+| --- | --- |
+| Contract | `0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f` |
+| Deploy tx | `0x69b3197e600b7ccd67aae7d4683d16452f8bc572c5ff8a3ea132cf2db4b476c9` |
+| Explorer | <https://explorer-bradbury.genlayer.com/address/0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f> |
+
+Verified against the live contract, not just locally:
+
+- `get_config()` returns the policy the tests assert — 200 bps validator
+  tolerance, 500 bps cross-source agreement, $25,000 liquidity floor.
+- `preview_sample("$0.00012345")` returns `123450000000000`, so the integer
+  parser behaves on chain exactly as it does in the suite.
+- A war on BRETT was opened and matched, **which exercised the oracle for real**:
+  the contract read DexScreener and GeckoTerminal on-chain, the two providers
+  agreed, and validators locked an entry price of `0.00580086753` with
+  `$1,219,802` of observed liquidity.
+
+Remaining:
+
+- The frontend has **not** been run against the deployed contract (no browser
+  available where this was built). Its first testnet run is its smoke test.
+- Settlement of the live war needs the 1h window to pass; `tools/settle.py` is
+  the keeper that pushes it.
+- `tests/integration/` needs `MEMEWAR_LIVE=1` and spends testnet funds.
 
 ## Roadmap
 

@@ -16,8 +16,22 @@ Meme War — trustless PvP settlement for assets that have no oracle
 | Type | Value |
 | --- | --- |
 | Other | `https://github.com/chenjinhe327-byte/meme-war` *(push this repo first)* |
-| Other | `<GenLayer explorer link to the deployed MemeWar contract>` |
-| Other | `<frontend URL, or the explorer link to a settled war transaction>` |
+| Other | `https://explorer-bradbury.genlayer.com/address/0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f` |
+| Other | `<explorer link to the resolve_war tx once the war settles>` |
+
+Deployed and exercised on GenLayer Bradbury (chain 4221):
+
+| | |
+| --- | --- |
+| Contract | `0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f` |
+| Deploy tx | `0x69b3197e600b7ccd67aae7d4683d16452f8bc572c5ff8a3ea132cf2db4b476c9` |
+| Match tx | `0x4555b693a4819052964bf2dcf4c8ee934c189dd6a104bb2808308ed9c95b730e` |
+| War | `0xb1065e9d0adb2bd0295940164ecc533bbdcaf6609b9273f08ba44f1e3a93b0bb` |
+
+The matched war is the load-bearing evidence: `entry_price = 0.00580086753` and
+`entry_liquidity = $1,219,802` were produced **on chain**, by the contract reading
+two independent providers and validators agreeing on the number within 200 bps.
+That is the part no local test can prove.
 
 ## Notes / description
 
