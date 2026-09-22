@@ -73,7 +73,9 @@ refund is always better than paying the wrong player.
 
 ```
 contracts/meme_war.py     the Intelligent Contract (single file, no boilerplate)
-tests/direct/             65 in-memory tests: parsing, market rules, oracle, settlement
+tests/direct/             65 in-memory contract tests (parsing, market rules,
+                          oracle, settlement)
+tests/unit/               23 tests for the CLI's own logic
 tests/integration/        Studio / testnet end-to-end tests
 cli/meme_war.py           command line client (genlayer-py)
 frontend/                 static dApp, no build step (genlayer-js)
@@ -91,14 +93,15 @@ whole suite runs offline in about four seconds:
 
 ```bash
 pip install -r requirements.txt
-pytest                       # 65 passed
+pytest                       # 88 passed
 ```
 
 ```
 tests/direct/test_price_parsing.py      23 tests   numeric contract of the oracle
-tests/direct/test_market.py             15 tests   open / match / cancel rules
-tests/direct/test_oracle_consensus.py   16 tests   reduction + validator agreement
-tests/direct/test_settlement.py         11 tests   payout, void, refunds
+tests/direct/test_market.py             18 tests   open / match / cancel rules
+tests/direct/test_settlement.py         13 tests   payout, void, refunds
+tests/direct/test_oracle_consensus.py   11 tests   reduction + validator agreement
+tests/unit/test_cli.py                  23 tests   stake parsing, argument surface
 ```
 
 Highlights:
@@ -110,6 +113,8 @@ Highlights:
 - `test_thin_liquidity_is_refused` / `test_repeated_data_failures_void_the_war` —
   the failure paths that decide between refunding and paying.
 - `test_no_float_rounding_drift` — parsing is integer-only, by construction.
+- `test_stake_is_always_parsed_as_gen` — `--stake 1` is one GEN. It used to be
+  one wei, which the CLI's own tests caught before anyone lost money to it.
 
 ### Deploy
 
@@ -173,7 +178,8 @@ immediately.
 
 ## Status
 
-- Contract, CLI, deploy script and the 65-test direct suite are working.
+- Contract, CLI, deploy script and the 88-test suite (65 contract + 23 CLI) are
+  working.
 - The frontend is a complete client but has **not** been executed against a
   deployed contract from this environment (no browser and no testnet access
   here) — treat the first testnet run as its smoke test.

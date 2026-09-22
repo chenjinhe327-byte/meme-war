@@ -59,12 +59,24 @@ def _address() -> str:
 
 
 def _stake_to_wei(text: str) -> int:
-    """Accept 0.01 or 10000000000000000 and return wei."""
-    if "." in text:
-        whole, _, fraction = text.partition(".")
-        fraction = (fraction + "0" * 18)[:18]
-        return int(whole) * ONE_GEN + int(fraction or "0")
-    return int(text)
+    """Parse a GEN amount such as ``0.01`` or ``1`` into wei.
+
+    Always GEN. An integer is GEN too, so ``--stake 1`` is one GEN and never one
+    wei: the flag is documented in GEN, and silently reinterpreting a bare
+    integer as wei would send a thousandth of a percent of what the user typed.
+    Use a decimal like ``0.000000000000000001`` when you really do mean wei.
+    """
+    cleaned = text.strip()
+    if cleaned == "" or cleaned.count(".") > 1:
+        raise ValueError(f"not a GEN amount: {text!r}")
+    whole, _, fraction = cleaned.partition(".")
+    if whole == "":
+        whole = "0"
+    if not whole.isdigit() or (fraction and not fraction.isdigit()):
+        raise ValueError(f"not a GEN amount: {text!r}")
+    # Truncate rather than round, so a user is never charged more than typed.
+    padded = (fraction + "0" * 18)[:18]
+    return int(whole) * ONE_GEN + int(padded)
 
 
 def _finish(client, tx_hash, as_json: bool):
