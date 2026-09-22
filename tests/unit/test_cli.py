@@ -9,12 +9,26 @@ money is actually sent, and the argument surface itself.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 from cli import meme_war
 
 ONE_GEN = 10 ** 18
+
+
+@pytest.fixture(autouse=True)
+def _isolate_environment(monkeypatch):
+    """Never read the developer's real .env.
+
+    Once `tools/new_wallet.py` has been run there *is* a real .env on the
+    machine, and a test that quietly depends on it either passes for the wrong
+    reason or fails for one. Each test opts into the variables it wants.
+    """
+    monkeypatch.setattr(meme_war, "ENV_FILE", Path("does-not-exist.env"))
+    for name in ("GENLAYER_PRIVATE_KEY", "GENLAYER_NETWORK", "MEMEWAR_ADDRESS"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.mark.parametrize(
