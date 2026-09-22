@@ -82,32 +82,36 @@ that did not answer) retry up to three times, while structural failures
 immediately.
 
 What is built: the Intelligent Contract (contracts/meme_war.py, single file);
-65 direct-mode tests that run offline in ~4s, including the two that pin the
-equivalence relation down — a validator reading 1% away must agree and one
-reading 10% away must disagree; a command line client and deployment script on
-genlayer-py; and a frontend that reads the live oracle policy from the contract
-and drives open / join / resolve / claim through the injected wallet. The
-numeric contract between "what a DEX page says" and "what the contract stores"
-is exposed publicly as preview_sample() so anyone relying on a war can inspect
-it rather than read the source.
+94 tests that run offline in seconds — 65 direct-mode contract tests, including
+the two that pin the equivalence relation down (a validator reading 1% away must
+agree and one reading 10% away must disagree), plus 29 more covering the CLI and
+the pre-flight tool; a command line client and deployment script on genlayer-py;
+and a frontend that reads the live oracle policy from the contract and drives
+open / join / resolve / claim through the injected wallet. The numeric contract
+between "what a DEX page says" and "what the contract stores" is exposed publicly
+as preview_sample() so anyone relying on a war can inspect it rather than read
+the source.
+
+It has been run end to end on GenLayer Bradbury: deployed, opened, matched,
+settled and paid out, with the entry and exit prices produced by the contract
+reading two providers on chain. The full transaction chain is in the README.
 ```
 
 ---
 
 ## Pre-submit checklist
 
-- [ ] Push this repository publicly.
-- [ ] `pip install -r requirements.txt && pytest` → **94 passed**.
-- [ ] Get testnet GEN from <https://testnet-faucet.genlayer.foundation>.
-- [ ] `GENLAYER_NETWORK=bradbury python deploy/deploy.py` → note the address.
-      Bradbury is the production-like testnet (`explorer-bradbury.genlayer.com`);
-      Asimov is for infrastructure and stress testing.
-- [ ] Pre-flight the token, then open one war and match it, so the settlement
-      path is exercised on a real validator set (the two-provider read is the
-      part that only a real network proves).
-- [ ] Record the deploy tx and at least one `resolve_war` tx for the Showcase.
-- [ ] Serve `frontend/` and pass `?address=0x<deployed>`; confirm reads load.
-- [ ] Paste the deployed address into this file and the README.
+All of the following is done; it is kept so the claims in this file can be
+re-checked rather than taken on trust.
+
+- [x] Repository is public: <https://github.com/chenjinhe327-byte/meme-war>
+- [x] `pytest` → **94 passed**
+- [x] Testnet GEN from <https://testnet-faucet.genlayer.foundation>
+- [x] Deployed to Bradbury → `0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f`
+- [x] Pre-flighted the token, opened a war and matched it on a real validator set
+- [x] Settled it and withdrew the pot (deploy / match / resolve / claim txs above)
+- [ ] Serve `frontend/` and confirm reads load — **not done; no browser available
+      where this was built.** Run it before submitting.
 
 ### A token that is known to pass
 
