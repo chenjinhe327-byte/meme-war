@@ -127,6 +127,12 @@ Highlights:
 
 Two things that are easy to get wrong:
 
+- **Asimov and Bradbury are not the same network, even though both report chain
+  id 4221.** The GEN *balance* lives on the shared underlying L2 (so both
+  faucets fund the same account), but each GenLayer RPC indexes its own consensus
+  state, so a contract deployed through one is genuinely absent from the other.
+  Reading a Bradbury contract through `rpc-asimov` fails with
+  `contract not found` — which is exactly how this was discovered.
 - **`genlayer-py` cannot fund an account on a testnet.** `fund_account()` raises
   unless the chain is localnet, so the money has to come from a faucet.
 - **The Studionet faucet is a button in the Studio UI, not a public URL.** That
