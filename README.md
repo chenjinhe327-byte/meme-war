@@ -118,11 +118,41 @@ Highlights:
 
 ### Deploy
 
+Get testnet GEN from <https://testnet-faucet.genlayer.foundation>, then:
+
 ```bash
 export GENLAYER_PRIVATE_KEY=0x...
-export GENLAYER_NETWORK=studionet     # or asimov for testnet
-python deploy/deploy.py               # writes deploy/deployment.json
+export GENLAYER_NETWORK=bradbury     # production-like testnet; asimov is for stress testing
+python deploy/deploy.py              # writes deploy/deployment.json
 ```
+
+Deployed contracts are visible at `explorer-bradbury.genlayer.com`.
+
+### Pre-flight a token before opening a war
+
+The contract voids a war - and refunds both sides - if the two providers
+disagree by more than 500 bps or the thinnest pool is under $25,000. Check
+first, using the same two providers the contract reads:
+
+```bash
+python tools/check_token.py --chain base --address 0x532f27101965dd16442E59d40670FaF5eBB142E4
+```
+
+```
+  dexscreener     price=0.005807  liquidity=$1,319,340
+  geckoterminal   price=0.005804027131  liquidity=$1,240,284
+  spread          0.05%
+  thinnest pool   $1,240,284
+
+PASS: passes both integrity rules
+```
+
+**Provider rate limits are a real operational risk.** DexScreener returns HTTP
+429 quite aggressively per IP; three quick calls from one machine is enough to
+trip it, and a 429 is indistinguishable from "provider down" to the contract -
+the war retries and can void. The tool backs off and retries on 429 for this
+reason, and it is worth checking the token immediately before opening a war
+rather than minutes earlier.
 
 ### Use it from the CLI
 

@@ -145,6 +145,13 @@ def test_unknown_network_is_rejected(monkeypatch):
         meme_war._client()
 
 
+def test_bradbury_is_available():
+    """Bradbury is the production-like testnet a reviewer will look at; shipping
+    with only Asimov would have pointed the demo at the wrong network."""
+    assert "bradbury" in meme_war.NETWORKS
+    assert meme_war.NETWORKS["bradbury"].id == 4221
+
+
 def test_missing_private_key_is_reported(monkeypatch):
     monkeypatch.delenv("GENLAYER_PRIVATE_KEY", raising=False)
 

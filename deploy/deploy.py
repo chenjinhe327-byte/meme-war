@@ -18,12 +18,16 @@ import sys
 from pathlib import Path
 
 from genlayer_py import create_account, create_client
-from genlayer_py.chains import localnet, studionet, testnet_asimov
+from genlayer_py.chains import localnet, studionet, testnet_asimov, testnet_bradbury
 from genlayer_py.types import TransactionStatus
 
 NETWORKS = {
     "localnet": localnet,
     "studionet": studionet,
+    # Bradbury is the production-like testnet; Asimov is for infrastructure and
+    # stress testing. Use Bradbury for anything a reviewer will look at.
+    "bradbury": testnet_bradbury,
+    "testnet_bradbury": testnet_bradbury,
     "asimov": testnet_asimov,
     "testnet_asimov": testnet_asimov,
 }

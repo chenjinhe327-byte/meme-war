@@ -1,5 +1,10 @@
 # v2.0.0
-# { "Depends": "py-genlayer:latest" }
+# { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
+#
+# The runner hash above is pinned on purpose: it is the py-genlayer v0.2.16
+# runner the whole test suite was executed against (and the one the official
+# genlayer-project-boilerplate pins). `latest` would let the deployed artifact
+# drift away from the tested one.
 #
 # Meme War v2 - trustless PvP settlement for assets that have no oracle.
 #

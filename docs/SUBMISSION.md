@@ -69,14 +69,31 @@ it rather than read the source.
 
 ## Pre-submit checklist
 
-- [ ] Remove the `.vendor`/cache references and push this repository publicly.
-- [ ] `pip install -r requirements.txt && pytest` → **65 passed**.
-- [ ] `GENLAYER_NETWORK=asimov python deploy/deploy.py` → note the address.
-- [ ] Open one war and match it, so the settlement path is exercised on a real
-      validator set (the two-provider read is the part that only testnet proves).
+- [ ] Push this repository publicly.
+- [ ] `pip install -r requirements.txt && pytest` → **94 passed**.
+- [ ] Get testnet GEN from <https://testnet-faucet.genlayer.foundation>.
+- [ ] `GENLAYER_NETWORK=bradbury python deploy/deploy.py` → note the address.
+      Bradbury is the production-like testnet (`explorer-bradbury.genlayer.com`);
+      Asimov is for infrastructure and stress testing.
+- [ ] Pre-flight the token, then open one war and match it, so the settlement
+      path is exercised on a real validator set (the two-provider read is the
+      part that only a real network proves).
 - [ ] Record the deploy tx and at least one `resolve_war` tx for the Showcase.
 - [ ] Serve `frontend/` and pass `?address=0x<deployed>`; confirm reads load.
-- [ ] Paste the deployed address into `docs/SUBMISSION.md` and the README.
+- [ ] Paste the deployed address into this file and the README.
+
+### A token that is known to pass
+
+Verified with `tools/check_token.py` against the live providers:
+
+```
+BRETT on Base   0x532f27101965dd16442E59d40670FaF5eBB142E4
+  dexscreener     price=0.005807        liquidity=$1,319,340
+  geckoterminal   price=0.005804027131  liquidity=$1,240,284
+  spread 0.05%    thinnest pool $1,240,284   -> PASS
+```
+
+Use a 1h window so the round trip can be completed in one sitting.
 
 ## Honest status — read before submitting
 
@@ -85,10 +102,17 @@ it rather than read the source.
   Do that before submitting, and fix or drop the link if it misbehaves.
 - The **integration tests are skipped** unless `MEMEWAR_LIVE=1`; they spend
   testnet funds.
+- **Provider rate limits can void a war.** DexScreener returns HTTP 429
+  aggressively per IP — three quick calls from one machine is enough to trip it —
+  and a 429 is indistinguishable from "provider down", so the war retries and can
+  void. This was observed directly while validating the pre-flight tool. It is
+  the same root cause as the single-provider dependency below.
 - Two providers means **one provider outage blocks matching**. That is a known
   limitation with a documented fix (a third provider, which also upgrades the
   reduction from midpoint to an outlier-rejecting median). Do not describe it as
   solved.
+- The contract pins the `py-genlayer` runner hash rather than `latest`, so the
+  deployed artifact is the one the 94 tests were executed against.
 
 ## Why this is a Project and not an Intelligent Contract submission
 
