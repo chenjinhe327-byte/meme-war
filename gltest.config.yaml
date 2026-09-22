@@ -1,0 +1,13 @@
+[tool.gltest]
+# Direct-mode tests need no network and run in milliseconds; they are the
+# default so `pytest` alone is a complete check on a clean machine.
+test_paths = ["tests/direct"]
+
+[tool.gltest.contracts]
+contracts_dir = "contracts"
+
+[tool.gltest.networks.localnet]
+chain_id = 61999
+
+[tool.gltest.networks.testnet_asimov]
+chain_id = 4221

@@ -1,0 +1,7 @@
+# Runtime / deployment
+genlayer-py>=0.18.0,<0.20.0
+
+# Tests
+pytest>=8.0
+genlayer-test>=0.29.0
+eth-utils>=5.0

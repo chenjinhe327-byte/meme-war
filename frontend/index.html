@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Meme War — PvP settlement for assets with no oracle</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark">⚔</span>
+        <div>
+          <h1>Meme War</h1>
+          <p class="tagline">Two players. One token. No oracle required.</p>
+        </div>
+      </div>
+      <div class="wallet">
+        <span id="network" class="pill pill-muted">not connected</span>
+        <button id="connect" class="btn btn-primary">Connect wallet</button>
+        <span id="account" class="mono"></span>
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>How this settles</h2>
+        <p class="muted">
+          Neither side picks the price source. The contract reads two independent
+          DEX aggregators, reduces them to one number, and GenLayer validators
+          agree on it <em>within a tolerance</em> — because two validators never see
+          a byte-identical live page.
+        </p>
+        <div id="oracle" class="grid grid-3"></div>
+      </section>
+
+      <section class="card">
+        <h2>Open a war</h2>
+        <form id="open-form" class="grid grid-4">
+          <label>Token symbol<input name="symbol" value="PEPE" required /></label>
+          <label>Token address<input name="address" placeholder="0x…" required /></label>
+          <label>
+            Chain
+            <select name="chain">
+              <option>base</option>
+              <option>ethereum</option>
+              <option>bsc</option>
+              <option>arbitrum</option>
+              <option>polygon</option>
+              <option>solana</option>
+            </select>
+          </label>
+          <label>
+            Window
+            <select name="timeframe">
+              <option>1h</option>
+              <option selected>24h</option>
+              <option>7d</option>
+            </select>
+          </label>
+          <label>
+            Your side
+            <select name="side">
+              <option selected>UP</option>
+              <option>DOWN</option>
+            </select>
+          </label>
+          <label>Stake (GEN)<input name="stake" value="0.01" required /></label>
+          <label class="span-2 align-end">
+            <span>&nbsp;</span>
+            <button class="btn btn-primary" type="submit">Lock stake &amp; open</button>
+          </label>
+        </form>
+        <p id="open-status" class="status"></p>
+      </section>
+
+      <section class="card">
+        <div class="row-between">
+          <h2>Open wars</h2>
+          <div class="row">
+            <button id="refresh" class="btn">Refresh</button>
+            <button id="claim" class="btn">Claim winnings</button>
+          </div>
+        </div>
+        <p id="claimable" class="muted"></p>
+        <div id="wars" class="wars"></div>
+      </section>
+
+      <section class="card">
+        <h2>My wars</h2>
+        <div id="mine" class="wars"></div>
+      </section>
+
+      <section class="card">
+        <h2>Oracle reading check</h2>
+        <p class="muted">
+          The numeric contract between “what a DEX page says” and “what the
+          contract stores” is public. Type any value a provider might return.
+        </p>
+        <form id="parse-form" class="row">
+          <input name="value" value="$0.00012345" />
+          <button class="btn" type="submit">Read it</button>
+        </form>
+        <pre id="parse-out" class="mono block"></pre>
+      </section>
+    </main>
+
+    <footer class="muted">
+      <span id="contract-line" class="mono"></span>
+    </footer>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

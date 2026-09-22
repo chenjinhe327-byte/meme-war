@@ -1,0 +1,192 @@
+# Meme War
+
+**Trustless PvP settlement for assets that have no oracle.**
+
+Two players stake the same amount on opposite sides of a long-tail token's
+direction over a fixed window. The contract reads an entry price when the war is
+matched and an exit price when it expires; the winner takes the pot. Nobody
+custodies the stakes, and no player chooses the price source.
+
+Built on [GenLayer](https://genlayer.com) Intelligent Contracts.
+
+---
+
+## The problem
+
+Prediction markets and on-chain betting only work for assets somebody paid to
+list. Chainlink-style feeds exist for BTC, ETH and a few hundred tokens — not
+for the token that is actually moving this week.
+
+Long-tail tokens are different in kind, not just in degree:
+
+- there is **no feed** and no API contract to subscribe to;
+- the price only exists as a number rendered on a DEX aggregator page;
+- the pool may be thin enough that an attacker can push it anywhere they like.
+
+So the interesting question is not "how do I fetch a price". It is **"how do two
+independent validators agree on a number they each read from a live page that
+has moved since"**. That is what this contract is actually about.
+
+## Why a plain `strict_eq` contract cannot do this
+
+The obvious GenLayer pattern — render a page, ask an LLM for the price, compare
+the two answers with `gl.eq_principle.strict_eq` — never reaches consensus here.
+Two validators execute at different moments against a page that trades
+continuously. One reads `0.00012345`, the other `0.00012346`, and the comparison
+fails. The transaction cannot settle, so the money stays stuck. Byte equality is
+the wrong equivalence relation for a numeric fact.
+
+`MemeWar` replaces it with a **numeric tolerance consensus**:
+
+```python
+def validator_fn(result) -> bool:
+    leader = json.loads(result.calldata)          # the leader's number
+    mine = observe_price(sources)                 # re-derive it independently
+    return relative_spread_bps(mine["price"], leader["price"]) <= 200   # 2%
+```
+
+Validators agree when the two numbers are within 2% of each other. That absorbs
+price movement between executions (and ordinary provider latency) while still
+catching a validator that read a genuinely different market.
+
+Full design notes: [`docs/ORACLE.md`](docs/ORACLE.md).
+
+## The three integrity rules
+
+| Rule | Value | What it prevents |
+| --- | --- | --- |
+| **Validator tolerance** | 200 bps | Consensus failure on live data (the contract could never settle) |
+| **Cross-source agreement** | 500 bps | Settling on one provider that is wrong, stale or manipulated |
+| **Liquidity floor** | $25,000 | Wash-traded dust pools being pushed to any price |
+
+Everything that touches money is integer arithmetic. Provider output is untrusted
+text and is converted by [`parse_decimal`](contracts/meme_war.py) before it can
+influence a payout — deliberately without `float`, because a binary float is not
+the same number on every platform and this number decides who gets paid.
+
+When the data cannot be trusted, the war **voids and refunds both sides**. A
+refund is always better than paying the wrong player.
+
+---
+
+## Repository layout
+
+```
+contracts/meme_war.py     the Intelligent Contract (single file, no boilerplate)
+tests/direct/             65 in-memory tests: parsing, market rules, oracle, settlement
+tests/integration/        Studio / testnet end-to-end tests
+cli/meme_war.py           command line client (genlayer-py)
+frontend/                 static dApp, no build step (genlayer-js)
+deploy/deploy.py          deployment script
+docs/ORACLE.md            consensus design notes
+docs/SUBMISSION.md        the write-up submitted with the project
+```
+
+## Running it
+
+### Tests
+
+The direct runner executes contracts in-process with web and LLM mocks, so the
+whole suite runs offline in about four seconds:
+
+```bash
+pip install -r requirements.txt
+pytest                       # 65 passed
+```
+
+```
+tests/direct/test_price_parsing.py      23 tests   numeric contract of the oracle
+tests/direct/test_market.py             15 tests   open / match / cancel rules
+tests/direct/test_oracle_consensus.py   16 tests   reduction + validator agreement
+tests/direct/test_settlement.py         11 tests   payout, void, refunds
+```
+
+Highlights:
+
+- `test_validator_agrees_within_its_tolerance_band` — swaps the mock so the
+  validator reads a price 1% away from the leader's and asserts agreement.
+- `test_validator_rejects_a_price_beyond_its_tolerance` — the same test at 10%
+  asserts disagreement. Together these two pin down the equivalence relation.
+- `test_thin_liquidity_is_refused` / `test_repeated_data_failures_void_the_war` —
+  the failure paths that decide between refunding and paying.
+- `test_no_float_rounding_drift` — parsing is integer-only, by construction.
+
+### Deploy
+
+```bash
+export GENLAYER_PRIVATE_KEY=0x...
+export GENLAYER_NETWORK=studionet     # or asimov for testnet
+python deploy/deploy.py               # writes deploy/deployment.json
+```
+
+### Use it from the CLI
+
+```bash
+python -m cli.meme_war config
+python -m cli.meme_war sources --chain base --address 0x<token>
+python -m cli.meme_war parse '$0.00012345'          # how the oracle reads a value
+python -m cli.meme_war open --symbol PEPE --address 0x<token> --chain base --side UP --stake 0.01
+python -m cli.meme_war list
+python -m cli.meme_war join --war 0x<war> --stake 0.01
+python -m cli.meme_war resolve --war 0x<war>
+python -m cli.meme_war claim
+```
+
+### Frontend
+
+```bash
+cd frontend && python -m http.server 8080
+# open http://localhost:8080/?address=0x<deployed contract>
+```
+
+No bundler and no `node_modules`. The page reads the live oracle policy from the
+contract, lists open wars, and lets you open / join / resolve / claim through the
+injected wallet.
+
+---
+
+## Design decisions worth knowing
+
+**Stakes are matched, not pooled.** A war only becomes live when somebody takes
+the exact opposite side at the same size. There is no house, no AMM and no
+counterparty risk beyond the other player.
+
+**The entry price is fixed at match time, by the contract.** Neither player can
+choose a flattering entry; both sides trade the same observation, taken once
+both are committed.
+
+**Players cannot supply price sources.** Sources are derived by the contract from
+`(chain, token)` against a fixed provider table. A player who could name the
+source could name a fake one.
+
+**Resolution is permissionless but not player-controlled.** Anyone may push an
+expired war to settlement; the outcome comes from validators, not from the
+caller.
+
+**Payouts are pull-based.** Settlement credits a balance and `claim()` withdraws
+it. A failed transfer to one winner can never block anyone else's settlement.
+
+**Retry vs. void is explicit.** A provider that is unreachable is transient, so
+the war retries up to `MAX_ATTEMPTS`. Providers that answer but contradict each
+other, or that report a wash-tradeable pool, are a structural problem and void
+immediately.
+
+## Status
+
+- Contract, CLI, deploy script and the 65-test direct suite are working.
+- The frontend is a complete client but has **not** been executed against a
+  deployed contract from this environment (no browser and no testnet access
+  here) — treat the first testnet run as its smoke test.
+- `tests/integration/` runs against Studio/testnet and is skipped unless
+  `MEMEWAR_LIVE=1`, because it spends testnet funds.
+
+## Roadmap
+
+- Third price provider so a single outage cannot block matching (the median path
+  already handles 3+ readings).
+- Bonded dispute window after settlement.
+- Multi-outcome wars rather than direction only.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
