@@ -10,14 +10,23 @@
  */
 
 import { createClient } from "https://esm.sh/genlayer-js";
-import { testnetAsimov } from "https://esm.sh/genlayer-js/chains";
+import { testnetAsimov, testnetBradbury } from "https://esm.sh/genlayer-js/chains";
 
-const CHAIN = testnetAsimov;
-const CHAIN_LABEL = "GenLayer Asimov testnet";
+// Bradbury is what `deploy/deploy.py` targets by default. Asimov and Bradbury
+// both report chain id 4221, but they index different consensus state, so a
+// contract deployed through one is genuinely absent from the other - pointing
+// the frontend at the wrong one fails with "contract not found" rather than
+// silently reading a different ledger.
+const CHAINS = { bradbury: testnetBradbury, asimov: testnetAsimov };
 
-// Filled in from deploy/deployment.json (or ?address=0x… in the URL).
 const params = new URLSearchParams(location.search);
-const CONTRACT_ADDRESS = params.get("address") || "";
+const CHAIN_KEY = (params.get("chain") || "bradbury").toLowerCase();
+const CHAIN = CHAINS[CHAIN_KEY] || testnetBradbury;
+const CHAIN_LABEL = CHAIN.name || `GenLayer ${CHAIN_KEY}`;
+
+// Address from ?address=, otherwise from the deployment record written by
+// deploy/deploy.py, so the page works with no query string at all.
+let CONTRACT_ADDRESS = params.get("address") || "";
 
 const ONE_GEN = 10n ** 18n;
 
@@ -148,7 +157,20 @@ function warCard(war, { joinable = false, mine = false } = {}) {
     </article>`;
 }
 
+async function loadDeploymentRecord() {
+  if (CONTRACT_ADDRESS) return;
+  try {
+    const response = await fetch("./deployment.json", { cache: "no-store" });
+    if (!response.ok) return;
+    const record = await response.json();
+    if (record.address) CONTRACT_ADDRESS = record.address;
+  } catch (error) {
+    // No record served alongside the page; the query string is the fallback.
+  }
+}
+
 async function refresh() {
+  await loadDeploymentRecord();
   if (!CONTRACT_ADDRESS) {
     $("wars").innerHTML = `<p class="muted">Set the contract address with ?address=0x… or deploy first.</p>`;
     return;

@@ -174,8 +174,26 @@ def main() -> int:
         + "\n",
         encoding="utf-8",
     )
+
+    # The frontend is served from its own directory, so it cannot reach
+    # ../deploy/. Drop a copy next to index.html and the page configures itself.
+    frontend_record = ROOT / "frontend" / "deployment.json"
+    frontend_record.write_text(
+        json.dumps(
+            {
+                "network": network,
+                "address": address,
+                "deploy_tx": tx_hash,
+                "explorer": f"https://explorer-{network}.genlayer.com/address/{address}",
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
     print(f"MemeWar deployed at {address}")
-    print(f"written to {OUT}")
+    print(f"written to {OUT} and {frontend_record}")
     return 0
 
 
