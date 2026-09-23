@@ -173,8 +173,72 @@ def install_tx_hash_logger(sink=print) -> bool:
     return True
 
 
+class _TolerantStatusTable(dict):
+    """A dict that names unknown status codes instead of raising KeyError."""
+
+    def __init__(self, base, sink):
+        super().__init__(base)
+        self._sink = sink
+        self._reported = set()
+
+    def __missing__(self, key):
+        from genlayer_py.types.transactions import TransactionStatus
+
+        if key not in self._reported:
+            self._sink(f"  unknown consensus status {key!r}; treating as pending")
+            self._reported.add(key)
+        return TransactionStatus.PENDING
+
+
+def install_status_shim(sink=print) -> bool:
+    """Survive consensus status codes this SDK version has never heard of.
+
+    genlayer-py 0.18 maps status numbers 0-13. The network has since added at
+    least one more (14), and the decoder indexes that table directly, so an
+    unknown code raises `KeyError: '14'` *before* any polling can happen - the
+    transaction is fine, the client simply cannot name its state.
+
+    Unknown codes are treated as "not settled yet", which keeps
+    `wait_for_transaction_receipt` polling rather than crashing. That is the
+    conservative reading: an unrecognised state is far likelier to be
+    mid-consensus than a final success.
+    """
+    try:
+        from genlayer_py.types import transactions as tx_types
+    except ImportError:
+        return False
+
+    table = tx_types.TRANSACTION_STATUS_NUMBER_TO_NAME
+    if isinstance(table, _TolerantStatusTable):
+        return True
+
+    tx_types.TRANSACTION_STATUS_NUMBER_TO_NAME = _TolerantStatusTable(table, sink)
+    return True
+
+
+def wait_for_receipt(client, tx_hash, status=None, retries: int = 72, interval: int = 5000, **kwargs):
+    """Poll for a receipt far longer than the SDK's 30 second default.
+
+    `wait_for_transaction_receipt` gives up after 10 attempts x 3s. On this
+    network a write routinely sits in COMMITTING for longer than that, so the
+    default turns a perfectly good transaction into a timeout error - which is
+    how several writes here "failed" after they had already succeeded. 72 x 5s is
+    six minutes, comfortably past normal consensus without hanging forever.
+    """
+    from genlayer_py.types import TransactionStatus
+
+    return client.wait_for_transaction_receipt(
+        transaction_hash=tx_hash,
+        status=status or TransactionStatus.ACCEPTED,
+        retries=retries,
+        interval=interval,
+        **kwargs,
+    )
+
+
 def install_all(sink=print) -> None:
     """Install every workaround this network needs, in the right order."""
     install_retries()
     install_tx_hash_logger(sink)
     install_response_shims(sink)
+    install_status_shim(sink)

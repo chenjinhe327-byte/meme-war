@@ -23,6 +23,7 @@ import ast
 import re
 
 _DEPENDS = re.compile(r'#\s*\{\s*"Depends"')
+_VERSION = re.compile(r"#\s*v\d")
 
 # The chain caps a single transaction at 2**24 gas. Measured on Bradbury:
 #   gas ~= 980_000 + 386 * calldata_chars
@@ -35,6 +36,16 @@ GAS_PER_CHAR = 386
 
 def is_depends_header(line: str) -> bool:
     return bool(_DEPENDS.match(line.strip()))
+
+
+def is_version_header(line: str) -> bool:
+    """The leading ``# v2.0.0`` line.
+
+    GenVM reads it to pick the runner contract version; dropping it makes the
+    node log "runner comment does not start with version, using default". Eight
+    bytes buys a clean deploy log, so it is kept.
+    """
+    return bool(_VERSION.match(line.strip()))
 
 
 def docstring_line_ranges(source: str) -> list:
@@ -79,7 +90,7 @@ def minify_source(source: str) -> str:
     for index, line in enumerate(source.splitlines(), start=1):
         stripped = line.strip()
 
-        if is_depends_header(line):
+        if is_depends_header(line) or is_version_header(line):
             kept.append(stripped)
             continue
 

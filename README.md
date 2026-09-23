@@ -51,13 +51,23 @@ catching a validator that read a genuinely different market.
 
 Full design notes: [`docs/ORACLE.md`](docs/ORACLE.md).
 
-## The three integrity rules
+## The four integrity rules
 
 | Rule | Value | What it prevents |
 | --- | --- | --- |
 | **Validator tolerance** | 200 bps | Consensus failure on live data (the contract could never settle) |
+| **Same winner, not just a close number** | — | The leader and validator agreeing on a price while disagreeing about who gets paid |
 | **Cross-source agreement** | 500 bps | Settling on one provider that is wrong, stale or manipulated |
 | **Liquidity floor** | $25,000 | Wash-traded dust pools being pushed to any price |
+
+A tolerance alone is not enough, and that gap is worth spelling out. Two readings
+can sit comfortably inside the 200 bps band and still fall on opposite sides of
+the entry price: the leader reads `1.0010` against an entry of `1.0000` (UP) while
+the validator reads `0.9990` (DOWN) — 20 bps apart. A price-only check accepts
+that pair, and the war settles on whichever node happened to lead. So when
+settling, the validator also derives its own winner and must match the leader's;
+if the price genuinely straddles the entry, consensus fails and the war retries
+rather than settling by coin flip.
 
 Everything that touches money is integer arithmetic. Provider output is untrusted
 text and is converted by [`parse_decimal`](contracts/meme_war.py) before it can
@@ -66,6 +76,22 @@ the same number on every platform and this number decides who gets paid.
 
 When the data cannot be trusted, the war **voids and refunds both sides**. A
 refund is always better than paying the wrong player.
+
+## The two clocks
+
+- **The matching window** (6h) starts when the war is created. Miss it and the
+  creator reclaims the stake.
+- **The wager window** (1h / 24h / 7d) starts when the war is *matched*, not when
+  it was created. A war that waited five hours for an opponent still gives both
+  players the full window they signed up for, and the entry price is fixed at the
+  same moment, so the two sides trade the same observation.
+
+Resolution is permissionless — anyone may push an expired war to settlement,
+because the outcome comes from validators rather than the caller. That makes it
+free to grief, so **attempts are rate limited to one per 10 minutes**. Without
+that, three calls in a row during a thirty-second provider outage would void the
+war and rob a winner who did nothing wrong; with it, a refund needs the data to
+stay unusable for at least 20 minutes.
 
 ---
 
@@ -240,9 +266,9 @@ immediately.
 
 | | |
 | --- | --- |
-| Contract | `0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f` |
-| Deploy tx | `0x69b3197e600b7ccd67aae7d4683d16452f8bc572c5ff8a3ea132cf2db4b476c9` |
-| Explorer | <https://explorer-bradbury.genlayer.com/address/0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f> |
+| Contract | `0xa3b14b98c6D6D74A344463a3604Db804700a638A` |
+| Deploy tx | `0xfc541adb4999aab83cf605fdae250ab634710e3692e14217fb07b5c15f6e5768` |
+| Explorer | <https://explorer-bradbury.genlayer.com/address/0xa3b14b98c6D6D74A344463a3604Db804700a638A> |
 
 Verified against the live contract, not just locally:
 
@@ -257,7 +283,7 @@ Verified against the live contract, not just locally:
 
   | Step | Transaction |
   | --- | --- |
-  | Deploy | `0x69b3197e600b7ccd67aae7d4683d16452f8bc572c5ff8a3ea132cf2db4b476c9` |
+  | Deploy | `0xfc541adb4999aab83cf605fdae250ab634710e3692e14217fb07b5c15f6e5768` |
   | Match — oracle reads entry | `0x4555b693a4819052964bf2dcf4c8ee934c189dd6a104bb2808308ed9c95b730e` |
   | Settle — oracle reads exit | `0x0b8e252964fa6e13db9a893950571480c244119cf45946cc01fc95c42ffe6021` |
   | Winner claims the pot | `0xd1169d4d1020faafaeefbc2ca4d6dda47e0b02abaf21fb5f8b088d5d30a10bda` |
@@ -280,10 +306,20 @@ Two things about GenLayer testnets cost real time here; both are handled in
   returns it — a receipt poll that dies must not lose a deployment that already
   landed. If reads fail outright, route through a proxy via `HTTPS_PROXY`.
 - **A single transaction is capped at 2^24 gas**, and the contract source *is*
-  the deploy calldata, so a well-documented 25 KB contract estimates to ~20.7M
-  gas and is rejected. `tools/minify.py` strips comments and docstrings at deploy
-  time (18.0 KB, ~14.9M gas) by deleting lines rather than rewriting code, so
-  what ships is byte-for-byte the code that was tested.
+  the deploy calldata, so a well-documented 25 KB contract is rejected. The
+  budget works out at roughly **20,200 bytes of minified source** (~16.8M gas).
+  `tools/minify.py` strips comments, docstrings and nothing else — by deleting
+  lines, never rewriting code — so what ships is byte-for-byte the code that was
+  tested. The deploy prints the estimate and the remaining headroom.
+- **A write can be applied while the RPC still calls its transaction pending.**
+  A create here was mined and changed state, yet still reported
+  `UNINITIALIZED / NOT_VOTED` minutes later. Receipt polling is therefore
+  unreliable on this network: `tools/net.py` waits six minutes, but confirm the
+  *resulting state* by reading it back rather than trusting the receipt.
+- **Status codes outrun the SDK.** genlayer-py 0.18 knows status numbers 0-13 and
+  the network has since used 14; its decoder raises `KeyError: '14'` before any
+  polling can happen. `install_status_shim` treats unknown codes as "not settled
+  yet" so polling continues instead of crashing.
 
 ## Roadmap
 

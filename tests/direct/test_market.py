@@ -12,6 +12,7 @@ from helpers import (
     T0,
     TOKEN,
     create_war,
+    iso,
     join_war,
     mock_providers,
 )
@@ -41,8 +42,59 @@ def test_create_war_records_the_first_side(direct_vm, court, direct_alice):
     assert war["token_symbol"] == SYMBOL
     assert war["chain"] == CHAIN
     assert war["match_deadline"] == war["created_at"] + MATCH_WINDOW
-    assert war["resolve_at"] == war["created_at"] + DAY
+    # The wager clock has not started: it starts when somebody takes the other
+    # side and the entry price is fixed.
+    assert war["matched_at"] == 0
+    assert war["resolve_at"] == 0
     assert court.get_config()["total_wars"] == 1
+
+
+def test_the_wager_window_starts_when_the_war_is_matched(
+    direct_vm, court, direct_alice, direct_bob
+):
+    """A war that waited five hours for an opponent must still give both players
+    the full window they signed up for."""
+    war_id = create_war(direct_vm, court, direct_alice, timeframe="1h")
+    created = court.get_war(war_id)["created_at"]
+    assert court.get_war(war_id)["resolve_at"] == 0
+
+    joined_at = created + 5 * 3600
+    direct_vm.warp(iso(joined_at))
+    join_war(direct_vm, court, direct_bob, war_id)
+
+    war = court.get_war(war_id)
+    assert war["status"] == "MATCHED"
+    assert war["matched_at"] == joined_at
+    assert war["resolve_at"] == joined_at + 3600
+    # Starting the clock at creation would have put the expiry in the past
+    # before the war had even begun.
+    assert war["resolve_at"] > created + 3600
+
+
+def test_a_late_join_cannot_be_resolved_immediately(
+    direct_vm, court, direct_alice, direct_bob
+):
+    war_id = create_war(direct_vm, court, direct_alice, timeframe="1h")
+    created = court.get_war(war_id)["created_at"]
+
+    direct_vm.warp(iso(created + 5 * 3600))
+    join_war(direct_vm, court, direct_bob, war_id)
+
+    direct_vm.warp(iso(created + 5 * 3600 + 60))  # one minute after matching
+    with direct_vm.expect_revert("has not expired yet"):
+        court.resolve_war(war_id)
+
+
+def test_joining_just_inside_the_match_window_is_still_allowed(
+    direct_vm, court, direct_alice, direct_bob
+):
+    war_id = create_war(direct_vm, court, direct_alice, timeframe="1h")
+    created = court.get_war(war_id)["created_at"]
+
+    direct_vm.warp(iso(created + MATCH_WINDOW - 1))
+    join_war(direct_vm, court, direct_bob, war_id)
+
+    assert court.get_war(war_id)["status"] == "MATCHED"
 
 
 def test_create_war_requires_a_stake(direct_vm, court, direct_alice):

@@ -6,11 +6,13 @@ from __future__ import annotations
 import pytest
 
 from helpers import (
+    ATTEMPT_COOLDOWN,
     CONTRACT,
     STAKE,
     T0,
     TOKEN,
     create_war,
+    iso,
     join_war,
     mock_providers,
     remock_providers,
@@ -122,25 +124,81 @@ def test_thin_liquidity_at_expiry_voids(direct_vm, matched, direct_alice, direct
 
 
 def test_repeated_data_failures_void_the_war(direct_vm, matched, direct_alice, direct_bob):
-    """A transient outage must not strand the stakes forever."""
+    """A sustained outage must not strand the stakes forever.
+
+    Note the warps: without them the second and third calls are refused by the
+    retry cooldown, which is the point of the next test.
+    """
     contract, war_id = matched
     direct_vm.warp(AFTER_EXPIRY)
     direct_vm.clear_mocks()
 
     assert contract.resolve_war(war_id) == "VOID"
-    assert contract.get_war(war_id)["status"] == "MATCHED"  # retryable
-    assert contract.get_war(war_id)["attempts"] == 1
+    war = contract.get_war(war_id)
+    assert war["status"] == "MATCHED"  # retryable
+    assert war["attempts"] == 1
     assert contract.get_claim(direct_alice.as_hex) == 0
 
+    direct_vm.warp(iso(war["last_attempt_at"] + ATTEMPT_COOLDOWN + 1))
     contract.resolve_war(war_id)
     assert contract.get_war(war_id)["attempts"] == 2
 
+    war = contract.get_war(war_id)
+    direct_vm.warp(iso(war["last_attempt_at"] + ATTEMPT_COOLDOWN + 1))
     contract.resolve_war(war_id)
+
     war = contract.get_war(war_id)
     assert war["attempts"] == 3
     assert war["status"] == "VOID"
     assert contract.get_claim(direct_alice.as_hex) == STAKE
     assert contract.get_claim(direct_bob.as_hex) == STAKE
+
+
+def test_rapid_retries_cannot_force_a_refund(direct_vm, matched, direct_alice, direct_bob):
+    """Resolution is permissionless, which is exactly why it is rate limited.
+
+    Anyone can drive settlement, so without a cooldown a griefer could call it
+    three times in a row during a thirty-second provider outage and force the war
+    to void - robbing a winner who did nothing wrong.
+    """
+    contract, war_id = matched
+    direct_vm.warp(AFTER_EXPIRY)
+    direct_vm.clear_mocks()
+
+    assert contract.resolve_war(war_id) == "VOID"  # first attempt is allowed
+
+    for _ in range(5):
+        with direct_vm.expect_revert("cooldown"):
+            contract.resolve_war(war_id)
+
+    war = contract.get_war(war_id)
+    assert war["attempts"] == 1  # not MAX_ATTEMPTS
+    assert war["status"] == "MATCHED"  # no refund forced
+    assert contract.get_claim(direct_alice.as_hex) == 0
+    assert contract.get_claim(direct_bob.as_hex) == 0
+
+
+def test_a_refund_cannot_happen_faster_than_the_cooldown_allows(
+    direct_vm, matched, direct_alice
+):
+    """The minimum time from first attempt to refund is bounded by the config."""
+    contract, war_id = matched
+    config = contract.get_config()
+
+    assert config["attempt_cooldown_seconds"] == ATTEMPT_COOLDOWN
+    assert config["min_seconds_to_void"] == (config["max_attempts"] - 1) * ATTEMPT_COOLDOWN
+    assert config["min_seconds_to_void"] >= 1200
+
+    direct_vm.warp(AFTER_EXPIRY)
+    direct_vm.clear_mocks()
+
+    contract.resolve_war(war_id)
+    war = contract.get_war(war_id)
+
+    # One second short of the cooldown is still refused.
+    direct_vm.warp(iso(war["last_attempt_at"] + ATTEMPT_COOLDOWN - 1))
+    with direct_vm.expect_revert("cooldown"):
+        contract.resolve_war(war_id)
 
 
 def test_war_cannot_be_settled_twice(direct_vm, matched, direct_bob):

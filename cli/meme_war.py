@@ -109,10 +109,9 @@ def _finish(client, tx_hash, as_json: bool):
     waiting for it makes every write look like a failure when it succeeded - the
     exact trap that made `open` exit non-zero after the war had been created.
     """
-    receipt = client.wait_for_transaction_receipt(
-        transaction_hash=tx_hash,
-        status=TransactionStatus.ACCEPTED,
-    )
+    from tools.net import wait_for_receipt
+
+    receipt = wait_for_receipt(client, tx_hash)
     if as_json:
         print(json.dumps({"tx": str(tx_hash), "receipt": receipt}, indent=2, default=str))
     else:

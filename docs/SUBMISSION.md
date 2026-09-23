@@ -16,17 +16,26 @@ Meme War — trustless PvP settlement for assets that have no oracle
 | Type | Value |
 | --- | --- |
 | Other | `https://github.com/chenjinhe327-byte/meme-war` |
-| Other | `https://explorer-bradbury.genlayer.com/address/0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f` |
+| Other | `https://explorer-bradbury.genlayer.com/address/0xa3b14b98c6D6D74A344463a3604Db804700a638A` |
 | Other | `https://explorer-bradbury.genlayer.com/tx/0x0b8e252964fa6e13db9a893950571480c244119cf45946cc01fc95c42ffe6021` |
 
-## The full round trip, on chain
+## Deployment history
 
-Contract `0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f` on GenLayer Bradbury
-(chain 4221). Every row is a real transaction; nothing here was simulated.
+The contract was revised after review. Both revisions are on chain, and the
+evidence below is labelled by revision rather than blurred together.
+
+| Revision | Contract | Deploy tx |
+| --- | --- | --- |
+| v1 — as submitted | `0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f` | `0x69b3197e600b7ccd67aae7d4683d16452f8bc572c5ff8a3ea132cf2db4b476c9` |
+| v2 — after review | `0xa3b14b98c6D6D74A344463a3604Db804700a638A` | `0xfc541adb4999aab83cf605fdae250ab634710e3692e14217fb07b5c15f6e5768` |
+
+## v1: the full round trip, on chain
+
+Every row is a real transaction on GenLayer Bradbury (chain 4221); nothing was
+simulated. These ran against **v1**.
 
 | Step | Transaction |
 | --- | --- |
-| Deploy | `0x69b3197e600b7ccd67aae7d4683d16452f8bc572c5ff8a3ea132cf2db4b476c9` |
 | Open a war — creator stakes 0.01 GEN on BRETT going UP, 1h | war `0xb1065e9d0adb2bd0295940164ecc533bbdcaf6609b9273f08ba44f1e3a93b0bb` |
 | Match it — opponent stakes 0.01 GEN, **oracle reads the entry price** | `0x4555b693a4819052964bf2dcf4c8ee934c189dd6a104bb2808308ed9c95b730e` |
 | Settle after expiry — **oracle reads the exit price** | `0x0b8e252964fa6e13db9a893950571480c244119cf45946cc01fc95c42ffe6021` |
@@ -45,6 +54,36 @@ final claimable  0 (the winner drained it)   total_wars 1, total_settled 1
 DexScreener and GeckoTerminal inside a GenLayer validator set and agreeing on the
 number within 200 bps. That is the claim no local test can make, and it is the
 whole reason the project exists.
+
+## v2: what changed after review
+
+Three defects, all fixed in v2, plus 13 regression tests (94 → 107, all passing
+offline).
+
+**1. Validators now agree on the *winner*, not just on a nearby number.**
+A tolerance on the price is not sufficient. Two readings can sit inside the
+200 bps band and still fall on opposite sides of the entry price — the leader
+reads `1.0010` against an entry of `1.0000` (UP) while the validator reads
+`0.9990` (DOWN), 20 bps apart. A price-only check accepts that pair and the war
+settles on whichever node happened to lead. The validator now derives its own
+winner from its own reading and must match the leader's; when a price genuinely
+straddles the entry, consensus fails and the war retries instead of settling by
+coin flip. `test_winner_consensus.py` drives exactly that pair and asserts
+consensus fails.
+
+**2. The wager window starts when the war is matched, not when it was created.**
+Previously `resolve_at` was fixed at creation, so a war that waited five hours
+inside the six-hour matching window could arrive already expired and its "1h"
+would mean nothing. The entry price is fixed at the same moment, so both sides
+trade the same observation.
+
+**3. Permissionless retries are rate limited.**
+Anyone may push an expired war to settlement — that is the point. But a retry
+counter plus permissionless access is a griefing vector: three calls in a row
+during a thirty-second provider outage would hit `MAX_ATTEMPTS` and force a void,
+taking the pot from a winner who did nothing wrong. Attempts are now spaced by
+`ATTEMPT_COOLDOWN_SECONDS` (10 min), so a refund needs the data to stay unusable
+for at least 20 minutes. `min_seconds_to_void` is published in `get_config()`.
 
 ## Notes / description
 
@@ -107,7 +146,7 @@ re-checked rather than taken on trust.
 - [x] Repository is public: <https://github.com/chenjinhe327-byte/meme-war>
 - [x] `pytest` → **94 passed**
 - [x] Testnet GEN from <https://testnet-faucet.genlayer.foundation>
-- [x] Deployed to Bradbury → `0x8F47f49A140a5e898E4eA0C4F473AFcBCBD6Af1f`
+- [x] Deployed to Bradbury → `0xa3b14b98c6D6D74A344463a3604Db804700a638A`
 - [x] Pre-flighted the token, opened a war and matched it on a real validator set
 - [x] Settled it and withdrew the pot (deploy / match / resolve / claim txs above)
 - [ ] Serve `frontend/` and confirm reads load — **not done; no browser available

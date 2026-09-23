@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 
 CONTRACT = "contracts/meme_war.py"
@@ -11,6 +12,15 @@ T0_EPOCH = 1767225600
 
 HOUR = 3600
 DAY = 86400
+
+# Mirrors ATTEMPT_COOLDOWN_SECONDS in the contract.
+ATTEMPT_COOLDOWN = 600
+
+
+def iso(epoch: int) -> str:
+    """ISO-8601 'Z' timestamp, for ``direct_vm.warp``."""
+    moment = datetime.datetime.fromtimestamp(int(epoch), datetime.timezone.utc)
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 TOKEN = "0x" + "ab" * 20
 CHAIN = "base"

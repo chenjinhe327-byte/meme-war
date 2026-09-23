@@ -22,7 +22,6 @@ from pathlib import Path
 
 from genlayer_py import create_account, create_client
 from genlayer_py.chains import localnet, studionet, testnet_asimov, testnet_bradbury
-from genlayer_py.types import TransactionStatus
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts" / "meme_war.py"
@@ -103,7 +102,7 @@ def main() -> int:
 
     sys.path.insert(0, str(ROOT))
     from tools.minify import shrink
-    from tools.net import install_all
+    from tools.net import install_all, wait_for_receipt
 
     install_all()
 
@@ -136,11 +135,7 @@ def main() -> int:
     tx_hash = client.deploy_contract(code=code, args=[])
     print(f"deploy tx: {tx_hash}")
 
-    receipt = client.wait_for_transaction_receipt(
-        transaction_hash=tx_hash,
-        status=TransactionStatus.ACCEPTED,
-        full_transaction=True,
-    )
+    receipt = wait_for_receipt(client, tx_hash, full_transaction=True)
 
     # Always keep the raw receipt: when address extraction goes wrong, the
     # receipt is the only record of what actually happened on chain.

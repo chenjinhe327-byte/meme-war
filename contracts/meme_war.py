@@ -43,7 +43,8 @@ PRICE_ONE = 10 ** PRICE_DECIMALS
 
 # Validators independently re-read the same two providers. Between the leader's
 # execution and the validator's the price legitimately drifts, so they agree if
-# their independently computed medians are within this band.
+# their independently computed medians are within this band - *and* only if that
+# drift does not change the winner. See `agreed_observation`.
 VALIDATOR_TOLERANCE_BPS = 200  # 2%
 
 # Two *independent* providers must corroborate each other. Beyond this spread the
@@ -59,6 +60,13 @@ LIQUIDITY_SCALE = 10 ** LIQUIDITY_DECIMALS
 MATCH_WINDOW_SECONDS = 6 * 3600
 MIN_TIME_TO_RESOLVE = 3600
 MAX_ATTEMPTS = 3
+
+# Resolution is permissionless, so without a cooldown anybody could call
+# resolve_war three times in a row during a thirty-second provider outage and
+# force the war to void - taking the pot away from a winner who did nothing
+# wrong. With this cooldown a refund needs the data to stay unusable for at least
+# (MAX_ATTEMPTS - 1) * ATTEMPT_COOLDOWN_SECONDS.
+ATTEMPT_COOLDOWN_SECONDS = 600
 
 # Failure reasons are machine-readable prefixes so callers can tell a structural
 # problem (the market is not trustworthy - void it) apart from a transient one
@@ -121,6 +129,9 @@ class War:
     pot: u256
     created_at: u256
     match_deadline: u256
+    # resolve_at is 0 until the war is matched: the wager only starts running
+    # once both sides are in and the entry price is fixed.
+    matched_at: u256
     resolve_at: u256
     entry_price: u256
     entry_liquidity: u256
@@ -128,6 +139,7 @@ class War:
     status: str
     winner: str
     attempts: u256
+    last_attempt_at: u256
     settled_at: u256
 
 
@@ -367,19 +379,39 @@ def observe_price(sources: list) -> dict:
     }
 
 
-def agreed_price(sources: list) -> dict:
+def agreed_observation(sources: list, entry_price: int = 0) -> dict:
     """Wrap ``observe_price`` in leader/validator consensus.
 
-    The validator does not re-compare pages, it re-derives the *number* and
-    accepts the leader when the two numbers are within
-    ``VALIDATOR_TOLERANCE_BPS``. Comparing numbers with a tolerance is what
-    makes a price-based Intelligent Contract settleable at all; a byte-exact
-    comparison of two live pages would essentially never agree.
+    The validator does not re-compare pages; it re-derives the number itself and
+    accepts the leader when the two are within ``VALIDATOR_TOLERANCE_BPS``. A
+    byte-exact comparison of two live pages would essentially never agree, so a
+    tolerance is what makes a price-based Intelligent Contract settleable at all.
+
+    With ``entry_price`` 0 the job is to *fix* an entry price, and a nearby number
+    is enough. Passing a real entry price means settling a war, and then a nearby
+    number is not enough: two readings can sit comfortably inside the price band
+    and still fall on opposite sides of the entry - the leader reads 1.0010
+    against an entry of 1.0000 (UP) while the validator reads 0.9990 (DOWN), a
+    spread of 20 bps. A price-only check accepts that pair and the war settles on
+    whichever node happened to lead, which is exactly the coin-flip a settlement
+    layer must not have.
+
+    So when settling, the validator also derives its own winner and must match the
+    leader's. When a price genuinely straddles the entry the two cannot agree,
+    consensus fails, and the war retries - settling only once the outcome is
+    unambiguous. A move too small to be told apart from noise should not decide
+    who is paid; if it never resolves, the war voids and refunds both sides.
     """
 
     def leader_fn() -> str:
         observation = observe_price(sources)
-        return json.dumps(observation, sort_keys=True)
+        payload = {
+            "price": observation["price"],
+            "liquidity": observation["liquidity"],
+        }
+        if entry_price:
+            payload["winner"] = winner_for(entry_price, observation["price"])
+        return json.dumps(payload, sort_keys=True)
 
     def validator_fn(result) -> bool:
         if not isinstance(result, gl.vm.Return):
@@ -399,12 +431,26 @@ def agreed_price(sources: list) -> dict:
         except Exception:
             return False
 
+        if entry_price:
+            # The load-bearing check: same outcome, not merely a nearby number.
+            if winner_for(entry_price, mine["price"]) != leader.get("winner"):
+                return False
+
         if relative_spread_bps(mine["price"], leader["price"]) > VALIDATOR_TOLERANCE_BPS:
             return False
         return relative_spread_bps(mine["liquidity"], leader["liquidity"]) <= 10000
 
     raw = _materialize(gl.vm.run_nondet(leader_fn, validator_fn))
     return json.loads(raw)
+
+
+def winner_for(entry_price: int, exit_price: int) -> str:
+    """Which side a move from entry to exit pays. A flat price is a void."""
+    if exit_price > entry_price:
+        return SIDE_UP
+    if exit_price < entry_price:
+        return SIDE_DOWN
+    return WINNER_VOID
 
 
 # --- contract ----------------------------------------------------------------
@@ -484,13 +530,19 @@ class MemeWar(gl.Contract):
             pot=u256(stake),
             created_at=u256(now),
             match_deadline=u256(now + MATCH_WINDOW_SECONDS),
-            resolve_at=u256(now + TIMEFRAMES[window]),
+            # The wager has not started yet: it begins when somebody takes the
+            # other side and the entry price is fixed. Starting the clock here
+            # instead would let a war that sat unmatched for hours arrive already
+            # expired, and the "1h" on the card would mean nothing.
+            matched_at=u256(0),
+            resolve_at=u256(0),
             entry_price=u256(0),
             entry_liquidity=u256(0),
             exit_price=u256(0),
             status=ST_OPEN,
             winner="",
             attempts=u256(0),
+            last_attempt_at=u256(0),
             settled_at=u256(0),
         )
         self.open_ids.append(war_id)
@@ -504,6 +556,9 @@ class MemeWar(gl.Contract):
 
         The entry price is fixed here, once both sides are committed, so neither
         player can pick a flattering entry and both trade the same observation.
+        The wager window starts here too, not at creation: a war that waited five
+        hours for an opponent must still give both players the full window they
+        signed up for.
         """
         if war_id not in self.wars:
             raise gl.vm.UserError("MemeWar: unknown war")
@@ -511,7 +566,8 @@ class MemeWar(gl.Contract):
 
         if war.status != ST_OPEN:
             raise gl.vm.UserError("MemeWar: war is not open")
-        if _now() > int(war.match_deadline):
+        now = _now()
+        if now > int(war.match_deadline):
             raise gl.vm.UserError("MemeWar: matching window has closed")
 
         sender = gl.message.sender_address
@@ -521,13 +577,16 @@ class MemeWar(gl.Contract):
             raise gl.vm.UserError("MemeWar: stake must match the creator exactly")
 
         sources = canonical_sources(war.chain, war.token_address)
-        observation = agreed_price(sources)
+        observation = agreed_observation(sources)
 
         war.opponent = sender
         war.entry_price = u256(observation["price"])
         war.entry_liquidity = u256(observation["liquidity"])
         war.pot = u256(int(war.stake) * 2)
         war.status = ST_MATCHED
+        war.matched_at = u256(now)
+        war.resolve_at = u256(now + TIMEFRAMES[war.timeframe])
+        war.last_attempt_at = u256(0)
         self.owner_ids.get_or_insert_default(sender).append(war_id)
 
     @gl.public.write
@@ -558,6 +617,10 @@ class MemeWar(gl.Contract):
         decided by validators rather than by the caller. Unusable data voids the
         war and refunds both stakes - refusing to pay is always safer than
         paying the wrong side.
+
+        Because it is permissionless, attempts are rate limited. Otherwise a
+        griefer could call this three times in a row during a short provider
+        outage and force a refund, robbing a winner who did nothing wrong.
         """
         if war_id not in self.wars:
             raise gl.vm.UserError("MemeWar: unknown war")
@@ -565,13 +628,27 @@ class MemeWar(gl.Contract):
 
         if war.status != ST_MATCHED:
             raise gl.vm.UserError("MemeWar: war is not awaiting settlement")
-        if _now() < int(war.resolve_at):
+
+        now = _now()
+        if now < int(war.resolve_at):
             raise gl.vm.UserError("MemeWar: the war has not expired yet")
+
+        if int(war.attempts) > 0:
+            ready_at = int(war.last_attempt_at) + ATTEMPT_COOLDOWN_SECONDS
+            if now < ready_at:
+                raise gl.vm.UserError(
+                    "MemeWar: retry cooldown has not elapsed, "
+                    + str(ready_at - now)
+                    + "s remaining"
+                )
+
+        war.attempts = war.attempts + u256(1)
+        war.last_attempt_at = u256(now)
 
         sources = canonical_sources(war.chain, war.token_address)
 
         try:
-            observation = agreed_price(sources)
+            observation = agreed_observation(sources, int(war.entry_price))
         except Exception as exc:
             # A provider that blinks is worth retrying. Providers that answer but
             # contradict each other, or that report a wash-tradeable pool, are a
@@ -581,22 +658,20 @@ class MemeWar(gl.Contract):
             for marker in STRUCTURAL_DATA_ERRORS:
                 if marker in text:
                     structural = True
-            war.attempts = war.attempts + u256(1)
             if structural or int(war.attempts) >= MAX_ATTEMPTS:
                 self._void(war)
             return WINNER_VOID
 
-        exit_price = int(observation["price"])
-        entry_price = int(war.entry_price)
-
-        if exit_price == entry_price:
+        winning_side = observation["winner"]
+        if winning_side == WINNER_VOID:
+            # Validators agreed that the price did not move. No side won, so
+            # neither is paid.
             self._void(war)
             return WINNER_VOID
 
-        winning_side = SIDE_UP if exit_price > entry_price else SIDE_DOWN
         winner = war.creator if war.creator_side == winning_side else war.opponent
 
-        war.exit_price = u256(exit_price)
+        war.exit_price = u256(observation["price"])
         war.winner = winning_side
         war.status = ST_RESOLVED
         war.settled_at = u256(_now())
@@ -653,6 +728,7 @@ class MemeWar(gl.Contract):
             "pot": int(war.pot),
             "created_at": int(war.created_at),
             "match_deadline": int(war.match_deadline),
+            "matched_at": int(war.matched_at),
             "resolve_at": int(war.resolve_at),
             "entry_price": int(war.entry_price),
             "entry_liquidity": int(war.entry_liquidity),
@@ -660,6 +736,7 @@ class MemeWar(gl.Contract):
             "status": war.status,
             "winner": war.winner,
             "attempts": int(war.attempts),
+            "last_attempt_at": int(war.last_attempt_at),
             "settled_at": int(war.settled_at),
         }
 
@@ -719,6 +796,8 @@ class MemeWar(gl.Contract):
             "min_liquidity_usd": MIN_LIQUIDITY_USD,
             "match_window_seconds": MATCH_WINDOW_SECONDS,
             "max_attempts": MAX_ATTEMPTS,
+            "attempt_cooldown_seconds": ATTEMPT_COOLDOWN_SECONDS,
+            "min_seconds_to_void": (MAX_ATTEMPTS - 1) * ATTEMPT_COOLDOWN_SECONDS,
             "timeframes": list(TIMEFRAMES.keys()),
             "chains": list(CHAIN_NETWORK.keys()),
             "total_wars": int(self.total_wars),

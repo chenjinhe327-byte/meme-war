@@ -56,6 +56,11 @@ def validator_fn(result) -> bool:
         return False                       # a failed leader is not agreed to
     leader = json.loads(result.calldata)
     mine = observe_price(sources)          # full independent re-derivation
+
+    if entry_price:                        # settling a war, not fixing an entry
+        if winner_for(entry_price, mine["price"]) != leader["winner"]:
+            return False                   # same decision, not merely a nearby number
+
     return relative_spread_bps(mine["price"], leader["price"]) <= 200
 ```
 
@@ -72,6 +77,38 @@ are within **2%**.
 The liquidity figure is compared with a much wider band (100%) on purpose: pool
 depth is far more volatile than price and its *job* is the floor test, which
 `observe_price` applies independently on each side.
+
+### Level 3 — the same *decision*, not just a nearby number
+
+A tolerance on the price is not sufficient on its own, and this is the subtle
+part. **Two readings can sit inside the band and still imply opposite winners.**
+
+```
+entry        1.0000
+leader       1.0010   -> UP
+validator    0.9990   -> DOWN
+spread       20 bps   -> inside the 200 bps band
+```
+
+A price-only check accepts that pair, consensus "succeeds", and the war settles
+on whichever node happened to lead. The two validators agreed on a number and
+disagreed about who gets paid — the one outcome a settlement layer exists to
+prevent.
+
+So when settling, the validator derives its own winner from its own reading
+against the same stored entry price, and must match the leader's. When a price
+genuinely straddles the entry the two cannot agree, consensus fails, and the war
+retries. That is the correct behaviour: a move too small to be told apart from
+noise should not decide who is paid, and if it never resolves the war voids and
+refunds both sides.
+
+The same function is used for both jobs, with `entry_price=0` meaning "fix an
+entry price" (a nearby number is enough) and a real entry price meaning "settle a
+war" (the decision must match).
+
+`test_winner_consensus.py` pins this down: it drives the leader to `1.001` and
+the validator to `0.999` — deliberately 20 bps apart, inside the band — and
+asserts consensus fails.
 
 `test_validator_agrees_within_its_tolerance_band` and
 `test_validator_rejects_a_price_beyond_its_tolerance` pin both edges of this band
@@ -120,6 +157,24 @@ the players should not lose their stakes to a rate limit. A provider that
 answers with a contradictory number is telling you the market itself is not
 coherent right now, and re-running will not fix that — so the war voids rather
 than settle on data nobody should trust.
+
+### Retries are rate limited, because resolution is permissionless
+
+Anyone may call `resolve_war` — that is the point, since the outcome comes from
+validators rather than the caller. But permissionless plus a retry counter is a
+griefing vector: three calls in a row during a thirty-second provider outage
+would hit `MAX_ATTEMPTS` and force the war to void, taking the pot away from a
+winner who did nothing wrong.
+
+So attempts are spaced by `ATTEMPT_COOLDOWN_SECONDS` (10 minutes). A refund now
+requires the data to stay unusable for at least `(MAX_ATTEMPTS - 1) * cooldown` =
+**20 minutes**, which a genuine outage will clear but a thirty-second blip will
+not. `min_seconds_to_void` is published in `get_config()` so the bound is
+checkable rather than folklore.
+
+`test_rapid_retries_cannot_force_a_refund` calls resolve five times in a row
+after a failure and asserts the attempt counter stops at 1 and no refund is
+issued.
 
 The reasons cross the consensus boundary as machine-readable prefixes
 (`MemeWar:DATA_DISAGREE`) precisely so the settle path can branch on them without
