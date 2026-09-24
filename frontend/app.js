@@ -155,6 +155,8 @@ async function loadOracleConfig() {
     ["Cross-source agreement", `${config.source_agreement_bps} bps`],
     ["Liquidity floor", `$${Number(config.min_liquidity_usd).toLocaleString()}`],
     ["Matching window", `${config.match_window_seconds / 3600} h`],
+    ["Wager window starts", "at match"],
+    ["Retry cooldown", `${config.attempt_cooldown_seconds / 60} min`],
     ["Wars opened", config.total_wars],
     ["Wars settled", config.total_settled],
   ];
@@ -169,9 +171,11 @@ async function loadOracleConfig() {
 function warCard(war, { joinable = false, mine = false } = {}) {
   const entry = war.entry_price ? weiToGen(war.entry_price) : "—";
   const exit = war.exit_price ? weiToGen(war.exit_price) : "—";
+  // resolve_at is 0 until somebody matches the war: the wager window starts at
+  // match, not at creation, so an unmatched war genuinely has no expiry yet.
   const when = war.resolve_at
     ? new Date(Number(war.resolve_at) * 1000).toISOString().replace("T", " ").slice(0, 16)
-    : "—";
+    : "when matched";
 
   const actions = [];
   if (joinable && war.status === "OPEN") {
@@ -215,8 +219,18 @@ async function loadDeploymentRecord() {
   }
 }
 
+function renderContractLine() {
+  $("contract-line").textContent = CONTRACT_ADDRESS
+    ? `MemeWar · ${CONTRACT_ADDRESS} · ${CHAIN_LABEL}`
+    : "MemeWar · not deployed yet";
+}
+
 async function refresh() {
   await loadDeploymentRecord();
+  // The address may only just have arrived from deployment.json, so the footer
+  // has to be redrawn here - setting it once at module load made the page claim
+  // "not deployed yet" while happily reading live data.
+  renderContractLine();
   if (!CONTRACT_ADDRESS) {
     $("wars").innerHTML = `<p class="muted">Set the contract address with ?address=0x… or deploy first.</p>`;
     return;
@@ -322,10 +336,6 @@ $("parse-form").addEventListener("submit", async (event) => {
     $("parse-out").textContent = error.message;
   }
 });
-
-$("contract-line").textContent = CONTRACT_ADDRESS
-  ? `MemeWar · ${CONTRACT_ADDRESS} · ${CHAIN_LABEL}`
-  : "MemeWar · not deployed yet";
 
 // Tells the inline boot check in index.html that the module loaded. If this
 // never runs, the CDN import failed and the page says so instead of leaving a
