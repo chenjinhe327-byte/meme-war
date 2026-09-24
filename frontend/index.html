@@ -115,32 +115,47 @@
     <script>
       // app.js pulls genlayer-js from a CDN. If that import fails the module
       // never executes, so no click handler is ever attached and the Connect
-      // button silently does nothing. This runs first and reports that case
-      // instead of leaving the visitor staring at a dead button.
+      // button silently does nothing - which is exactly the complaint this is
+      // here to prevent. Until the module signals readiness, the button answers
+      // for itself.
       window.__memewarReady = false;
-      window.addEventListener("error", function (event) {
-        var box = document.getElementById("boot-error");
-        if (!box) return;
-        box.hidden = false;
-        box.textContent = "Page error: " + (event.message || event.type);
-      });
-      window.addEventListener("unhandledrejection", function (event) {
-        var box = document.getElementById("boot-error");
-        if (!box) return;
-        box.hidden = false;
-        box.textContent =
-          "Page error: " + ((event.reason && event.reason.message) || event.reason);
-      });
-      setTimeout(function () {
-        if (window.__memewarReady) return;
-        var box = document.getElementById("boot-error");
-        if (!box) return;
-        box.hidden = false;
-        box.textContent =
-          "The app failed to start. Most likely the CDN import of genlayer-js " +
-          "was blocked — check the browser console, and whether this machine can " +
-          "reach esm.sh.";
-      }, 8000);
+
+      (function () {
+        var button = document.getElementById("connect");
+        var status = document.getElementById("wallet-status");
+        var boot = document.getElementById("boot-error");
+
+        function say(text) {
+          status.textContent = text;
+          status.className = "banner banner-bad";
+        }
+
+        if (button) {
+          button.addEventListener("click", function () {
+            if (window.__memewarReady) return; // the real handler takes over
+            say("Still loading the app… if this does not change, the CDN import of genlayer-js is blocked on this machine.");
+          });
+        }
+
+        window.addEventListener("error", function (event) {
+          boot.hidden = false;
+          boot.textContent = "Page error: " + (event.message || event.type);
+        });
+        window.addEventListener("unhandledrejection", function (event) {
+          boot.hidden = false;
+          boot.textContent =
+            "Page error: " + ((event.reason && event.reason.message) || event.reason);
+        });
+
+        setTimeout(function () {
+          if (window.__memewarReady) return;
+          boot.hidden = false;
+          boot.textContent =
+            "The app failed to start. Most likely the CDN import of genlayer-js " +
+            "was blocked - check the browser console, and whether this machine " +
+            "can reach esm.sh.";
+        }, 8000);
+      })();
     </script>
     <script type="module" src="./app.js"></script>
   </body>
