@@ -1,0 +1,53 @@
+# Publishes frontend/ to GitHub Pages.
+#
+# This exists so the site does not have to be dragged into Netlify by hand. Two
+# reasons that matters: the folder is easy to get wrong (dragging the repository
+# root would publish .env and .env.private, which Netlify Drop does not filter
+# through .gitignore), and a hand-made deploy has no permanent, findable URL.
+
+name: Deploy frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail if a private key ever reaches the published folder
+        run: |
+          set -euo pipefail
+          if [ -e frontend/.env ] || [ -e frontend/.env.opponent ]; then
+            echo "::error::a .env file is inside frontend/ - refusing to publish it"
+            exit 1
+          fi
+          echo "frontend/ contains:"
+          ls -la frontend
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
