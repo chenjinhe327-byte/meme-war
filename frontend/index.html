@@ -22,6 +22,9 @@
       </div>
     </header>
 
+    <p id="wallet-status" class="banner" role="status" aria-live="polite"></p>
+    <p id="boot-error" class="banner banner-bad" hidden></p>
+
     <main>
       <section class="card">
         <h2>How this settles</h2>
@@ -109,6 +112,36 @@
       <span id="contract-line" class="mono"></span>
     </footer>
 
+    <script>
+      // app.js pulls genlayer-js from a CDN. If that import fails the module
+      // never executes, so no click handler is ever attached and the Connect
+      // button silently does nothing. This runs first and reports that case
+      // instead of leaving the visitor staring at a dead button.
+      window.__memewarReady = false;
+      window.addEventListener("error", function (event) {
+        var box = document.getElementById("boot-error");
+        if (!box) return;
+        box.hidden = false;
+        box.textContent = "Page error: " + (event.message || event.type);
+      });
+      window.addEventListener("unhandledrejection", function (event) {
+        var box = document.getElementById("boot-error");
+        if (!box) return;
+        box.hidden = false;
+        box.textContent =
+          "Page error: " + ((event.reason && event.reason.message) || event.reason);
+      });
+      setTimeout(function () {
+        if (window.__memewarReady) return;
+        var box = document.getElementById("boot-error");
+        if (!box) return;
+        box.hidden = false;
+        box.textContent =
+          "The app failed to start. Most likely the CDN import of genlayer-js " +
+          "was blocked — check the browser console, and whether this machine can " +
+          "reach esm.sh.";
+      }, 8000);
+    </script>
     <script type="module" src="./app.js"></script>
   </body>
 </html>

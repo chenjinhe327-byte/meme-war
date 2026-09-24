@@ -58,19 +58,65 @@ function weiToGen(value) {
   return fraction ? `${whole}.${fraction}` : `${whole}`;
 }
 
+function setWalletStatus(text, kind = "") {
+  const node = $("wallet-status");
+  if (!node) return;
+  node.textContent = text;
+  node.className = `banner ${kind ? `banner-${kind}` : ""}`;
+}
+
 async function connect() {
   if (!window.ethereum) {
-    setStatus($("open-status"), "No injected wallet found.", "bad");
+    setWalletStatus(
+      "No wallet found. Install MetaMask (or another browser wallet), then reload this page.",
+      "bad",
+    );
     return;
   }
+
+  setWalletStatus("Requesting account…");
   const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
   account = accounts[0];
+
+  await ensureNetwork();
+
   client = createClient({ chain: CHAIN, account, provider: window.ethereum });
 
   $("account").textContent = short(account);
   $("network").textContent = CHAIN_LABEL;
   $("network").className = "pill pill-ok";
+  setWalletStatus(`Connected as ${short(account)} on ${CHAIN_LABEL}.`, "ok");
   await refresh();
+}
+
+/** MetaMask does not know chain 4221 until somebody adds it. */
+async function ensureNetwork() {
+  const chainId = "0x" + CHAIN.id.toString(16);
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId }],
+    });
+  } catch (error) {
+    const missing =
+      error?.code === 4902 || /unrecognized chain|not added/i.test(error?.message || "");
+    if (!missing) throw error;
+    setWalletStatus(`${CHAIN_LABEL} is not in your wallet yet — adding it…`);
+    await window.ethereum.request({
+      method: "wallet_addEthereumChain",
+      params: [
+        {
+          chainId,
+          chainName: CHAIN.name,
+          nativeCurrency: CHAIN.nativeCurrency,
+          rpcUrls: CHAIN.rpcUrls.default.http,
+          blockExplorerUrls: CHAIN.blockExplorers
+            ? [CHAIN.blockExplorers.default.url]
+            : [],
+        },
+      ],
+    });
+  }
 }
 
 function ensureClient() {
@@ -221,8 +267,20 @@ document.addEventListener("click", async (event) => {
   }
 });
 
-$("connect").addEventListener("click", () => connect().catch((e) => setStatus($("open-status"), e.message, "bad")));
-$("refresh").addEventListener("click", () => refresh());
+$("connect").addEventListener("click", () =>
+  connect().catch((error) => {
+    const message = error?.message || String(error);
+    // 4001 = the visitor rejected the request in their wallet, which is not an
+    // error worth shouting about.
+    setWalletStatus(
+      error?.code === 4001 ? "Connection request rejected." : `Wallet error: ${message}`,
+      error?.code === 4001 ? "" : "bad",
+    );
+  }),
+);
+$("refresh").addEventListener("click", () =>
+  refresh().catch((error) => setWalletStatus(`Refresh failed: ${error.message}`, "bad")),
+);
 
 $("claim").addEventListener("click", async () => {
   const status = $("open-status");
@@ -269,4 +327,11 @@ $("contract-line").textContent = CONTRACT_ADDRESS
   ? `MemeWar · ${CONTRACT_ADDRESS} · ${CHAIN_LABEL}`
   : "MemeWar · not deployed yet";
 
-refresh();
+// Tells the inline boot check in index.html that the module loaded. If this
+// never runs, the CDN import failed and the page says so instead of leaving a
+// dead Connect button.
+window.__memewarReady = true;
+
+refresh().catch((error) => {
+  setWalletStatus(`Could not read the contract: ${error.message}`, "bad");
+});

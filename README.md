@@ -290,8 +290,11 @@ Verified against the live contract, not just locally:
 
 Remaining:
 
-- The frontend has **not** been run against the deployed contract (no browser
-  available where this was built). Its first testnet run is its smoke test.
+- The frontend's **data path is verified**: `createClient` with and without a
+  wallet provider, then `readContract` against the live contract, exercised from
+  Node against the same `genlayer-js` build the page loads. The **browser wallet
+  click path** — MetaMask's injected provider — has not been exercised, because
+  there is no browser where this was built.
 - `tests/integration/` needs `MEMEWAR_LIVE=1` and spends testnet funds.
 
 ## Notes on this network

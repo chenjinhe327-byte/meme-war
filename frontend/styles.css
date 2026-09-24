@@ -21,6 +21,19 @@ body {
 
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
 
+.banner {
+  margin: 12px 24px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 13px;
+}
+.banner:empty { display: none; }
+.banner-ok { color: var(--ok); border-color: #1f5137; }
+.banner-bad { color: var(--bad); border-color: #5c2630; background: #1b1116; }
+
 .topbar {
   display: flex;
   align-items: center;
