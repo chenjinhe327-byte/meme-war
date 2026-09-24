@@ -223,14 +223,27 @@ python -m cli.meme_war claim
 
 ### Frontend
 
+**Live:** <https://chenjinhe327-byte.github.io/meme-war/>
+
 ```bash
 cd frontend && python -m http.server 8080
-# open http://localhost:8080/?address=0x<deployed contract>
+# open http://localhost:8080/
 ```
 
 No bundler and no `node_modules`. The page reads the live oracle policy from the
 contract, lists open wars, and lets you open / join / resolve / claim through the
-injected wallet.
+injected wallet. It needs a browser wallet on GenLayer Bradbury (chain 4221);
+`connect()` adds the chain to MetaMask if it is not there yet.
+
+Deployment is automated: `.github/workflows/pages.yml` publishes `frontend/` to
+GitHub Pages on every push, and refuses to publish if a `.env` ever appears in
+that folder. That replaced a hand-dragged Netlify deploy which had shipped only
+`index.html`, leaving `app.js` and `styles.css` as 404s — no JavaScript at all,
+so every button was dead.
+
+`python tools/build_standalone.py` produces `frontend/standalone.html`, a single
+self-contained file with the CSS and JS inlined and the contract address baked
+in, for occasions where only one file can be dropped somewhere.
 
 ---
 

@@ -16,8 +16,17 @@ Meme War — trustless PvP settlement for assets that have no oracle
 | Type | Value |
 | --- | --- |
 | Other | `https://github.com/chenjinhe327-byte/meme-war` |
+| Other | `https://chenjinhe327-byte.github.io/meme-war/` |
 | Other | `https://explorer-bradbury.genlayer.com/address/0xa3b14b98c6D6D74A344463a3604Db804700a638A` |
 | Other | `https://explorer-bradbury.genlayer.com/tx/0x0b8e252964fa6e13db9a893950571480c244119cf45946cc01fc95c42ffe6021` |
+
+**Website field:** `https://chenjinhe327-byte.github.io/meme-war/`
+
+Published automatically from `frontend/` by `.github/workflows/pages.yml` on
+every push, so the link cannot go stale. The first hand-made deploy silently
+shipped only `index.html`, leaving `app.js` and `styles.css` as 404s — no
+JavaScript, so every button was dead. That is what the reviewer hit, and it is
+why the deploy is automated rather than drag-and-drop.
 
 ## Deployment history
 
